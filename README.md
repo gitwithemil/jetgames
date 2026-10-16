@@ -16,7 +16,7 @@ WASD / arrows: move. Mouse: look. Shift: sprint. C: crouch. E: recover fuses / e
 
 ## Features
 
-Detailed procedural wallpaper, carpet and ceiling textures; branching rooms, light flicker and props; articulated wooden enemy with sight, sound, patrol and pursuit; flashlight with shadows and finite charge; stamina and crouching; five fuses and a powered exit; explored map; procedural ambience and positional threat cues; difficulty and quality settings; mobile controls; restart, victory and loss screens.
+Detailed procedural wallpaper, carpet and ceiling textures; branching rooms, light flicker and props; articulated wooden enemy with sight, sound, patrol and pursuit; flashlight with shadows and finite charge; adjustable screen brightness; stamina and crouching; five fuses and a powered exit; explored map; procedural ambience and positional threat cues; difficulty and quality settings; mobile controls; restart, victory and loss screens.
 
 All environment textures, enemy geometry and sounds are generated locally. Three.js is distributed under its MIT license in `dist/vendor/LICENSE.three.txt`. Barlow Condensed, DM Sans and IBM Plex Mono are bundled with their SIL Open Font Licenses in `dist/fonts/`.
 

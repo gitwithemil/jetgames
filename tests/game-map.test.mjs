@@ -68,9 +68,25 @@ test('the generated stages and survey interface work together', async t => {
     assert.equal(element('load-error').hidden, true);
     assert.ok(qa.world.rooms.length > 3);
     assert.ok(qa.scene.children.some(object => object.isGroup && object.children.some(child => child.isInstancedMesh)), 'World geometry was built.');
+    assert.equal(String(element('brightness-input').value), '100');
+    assert.equal(element('brightness-output').textContent, '100%');
+    assert.equal(game.rendererInstances[0].toneMappingExposure, .92);
     for (const id of ['map-open-button', 'touch-map', 'map-resume', 'map-clear-waypoint']) {
       assert.ok((element(id).events.get('click') ?? []).length, `${id} must have a click binding.`);
     }
+  });
+
+  await t.test('screen brightness adjusts scene exposure and saves locally', async () => {
+    const slider = element('brightness-input');
+    slider.value = '150';
+    await slider.dispatch('input');
+    assert.equal(element('brightness-output').textContent, '150%');
+    assert.ok(Math.abs(game.rendererInstances[0].toneMappingExposure - 1.38) < 1e-12);
+    assert.equal(JSON.parse(game.storage.get('sahur-settings')).brightness, 150);
+    slider.value = '50';
+    await slider.dispatch('input');
+    assert.equal(element('brightness-output').textContent, '50%');
+    assert.ok(Math.abs(game.rendererInstances[0].toneMappingExposure - .46) < 1e-12);
   });
 
   await t.test('every menu stage starts with its objectives, cast and limited lighting', async () => {

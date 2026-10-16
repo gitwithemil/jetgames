@@ -10,12 +10,13 @@ import { createAudio } from './audio.js';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches;
-const defaultSettings = { volume:65, sensitivity:50, difficulty:'normal', motion:!matchMedia('(prefers-reduced-motion:reduce)').matches, quality:coarse?'low':'high', scares:true };
+const defaultSettings = { volume:65, sensitivity:50, brightness:100, difficulty:'normal', motion:!matchMedia('(prefers-reduced-motion:reduce)').matches, quality:coarse?'low':'high', scares:true };
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem('sahur-settings') || '{}'); } catch {}
 const settings = { ...defaultSettings, ...saved };
 settings.volume = Math.max(0,Math.min(100,Number(settings.volume)||0));
 settings.sensitivity = Math.max(10,Math.min(100,Number(settings.sensitivity)||50));
+settings.brightness = Math.max(50,Math.min(150,Number(settings.brightness)||100));
 if (!['easy','normal','hard'].includes(settings.difficulty)) settings.difficulty='normal';
 if (!['low','high'].includes(settings.quality)) settings.quality='high';
 const audio = createAudio();
@@ -47,6 +48,7 @@ function notify(text,duration=3500) { $('toast').textContent=text; $('toast').cl
 function saveSettings(){ try{localStorage.setItem('sahur-settings',JSON.stringify(settings));}catch{} }
 function formatTime(seconds){return `${Math.floor(seconds/60).toString().padStart(2,'0')}:${Math.floor(seconds%60).toString().padStart(2,'0')}`;}
 function setVolume(){audio.setVolume(settings.volume/100*.65);document.querySelectorAll('.sound-button').forEach(b=>{b.classList.toggle('muted',settings.volume===0);b.setAttribute('aria-label',settings.volume===0?'Unmute audio':'Mute audio');});}
+function setBrightness(){if(renderer)renderer.toneMappingExposure=.92*settings.brightness/100;}
 
 try {
   renderer=new THREE.WebGLRenderer({canvas:$('game'),antialias:true,powerPreference:'high-performance'});
@@ -54,7 +56,7 @@ try {
   renderer.setSize(innerWidth,innerHeight);
   renderer.outputColorSpace=THREE.SRGBColorSpace;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure=.92;
+  setBrightness();
   renderer.shadowMap.enabled=settings.quality==='high';
   renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   scene=new THREE.Scene();
@@ -184,6 +186,7 @@ function closeModal(){
 function updateSettingsUI(){
   $('volume-input').value=settings.volume;$('volume-output').textContent=`${settings.volume}%`;
   $('sensitivity-input').value=settings.sensitivity;$('sensitivity-output').textContent=`${settings.sensitivity}%`;
+  $('brightness-input').value=settings.brightness;$('brightness-output').textContent=`${settings.brightness}%`;
   document.querySelectorAll('[data-difficulty]').forEach(b=>b.classList.toggle('selected',b.dataset.difficulty===settings.difficulty));
   document.querySelectorAll('[data-quality]').forEach(b=>b.classList.toggle('selected',b.dataset.quality===settings.quality));
   $('scares-toggle').classList.toggle('on',settings.scares);$('scares-toggle').setAttribute('aria-checked',String(settings.scares));
@@ -232,6 +235,7 @@ document.querySelectorAll('dialog').forEach(dialog=>{
 });
 $('volume-input').addEventListener('input',e=>{settings.volume=Number(e.target.value);$('volume-output').textContent=`${settings.volume}%`;setVolume();saveSettings();});
 $('sensitivity-input').addEventListener('input',e=>{settings.sensitivity=Number(e.target.value);$('sensitivity-output').textContent=`${settings.sensitivity}%`;saveSettings();});
+$('brightness-input').addEventListener('input',e=>{settings.brightness=Number(e.target.value);$('brightness-output').textContent=`${settings.brightness}%`;setBrightness();saveSettings();});
 document.querySelectorAll('[data-difficulty]').forEach(b=>b.addEventListener('click',()=>{settings.difficulty=b.dataset.difficulty;updateSettingsUI();saveSettings();}));
 document.querySelectorAll('[data-quality]').forEach(b=>b.addEventListener('click',()=>{settings.quality=b.dataset.quality;setQuality();updateSettingsUI();saveSettings();}));
 $('scares-toggle').addEventListener('click',()=>{settings.scares=!settings.scares;updateSettingsUI();saveSettings();});
