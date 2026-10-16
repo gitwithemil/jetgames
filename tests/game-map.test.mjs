@@ -125,6 +125,7 @@ test('the generated stages and survey interface work together', async t => {
       qa.scene.traverse(object => { if (object.isLight) lights.push(object); });
       assert.ok(lights.some(light => light.isHemisphereLight));
       assert.ok(lights.filter(light => light.isHemisphereLight).every(light => light.intensity <= .04), 'Map upgrades must preserve low ambient visibility.');
+      assert.ok(Math.abs(lights.find(light => light.isHemisphereLight).intensity - [.0275,.0385,.0198,.0176][index]) < 1e-12, 'Each stage has the small ambient-light increase.');
       assert.ok(lights.filter(light => light.isDirectionalLight).every(light => light.intensity === 0));
       assert.ok(qa.scene.getObjectByName('FLASHLIGHT_SPILL').intensity <= .03);
     }

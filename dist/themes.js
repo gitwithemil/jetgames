@@ -12,7 +12,7 @@ export function dressLevel(T,root,scene,{level,grid,edges,cellSize,wallHeight,ra
   }
   scene.fog=new T.FogExp2(kind==='pool'?0x030909:kind==='industrial'?0x080704:kind==='archive'?0x080405:0x060805,.026);
   scene.background.copy(scene.fog.color);
-  const baseHemi=kind==='pool'?.035:kind==='industrial'?.018:kind==='archive'?.016:.025;
+  const baseHemi=(kind==='pool'?.035:kind==='industrial'?.018:kind==='archive'?.016:.025)*1.1;
   hemi.color.setHex(kind==='pool'?0xa8e8e9:kind==='archive'?0xe8a7a1:0xd8dcc1);hemi.intensity=baseHemi;
   daylight.intensity=0;
   for(const {light} of lights)light.color.setHex(kind==='pool'?0xacefee:kind==='industrial'?0xffbb68:kind==='archive'?0xff7064:0xffeec0);

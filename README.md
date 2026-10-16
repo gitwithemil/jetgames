@@ -63,7 +63,7 @@ Validation includes all eleven event lifecycles, pose depths, shuffle-bag exhaus
 
 ## Flashlight-dependent darkness (v2.3)
 
-All four stages now use very low ambient illumination, zero daylight and near-black fog/backgrounds. Ceiling fixtures have weak, short-range lights; fluorescent emissions, room strips, floor glow pools and water highlights are dimmed. The restored exit casts only a small local glow. Objective and supply indicators remain readable as isolated navigation cues.
+All four stages now use low ambient illumination, zero daylight and near-black fog/backgrounds. Ambient fill is increased slightly for better default visibility while preserving the dark atmosphere. Ceiling fixtures have weak, short-range lights; fluorescent emissions, room strips, floor glow pools and water highlights are dimmed. The restored exit casts only a small local glow. Objective and supply indicators remain readable as isolated navigation cues.
 
 The flashlight has a tighter directional cone, a 22 m maximum range and stronger central illumination. Its small near-field spill is completely disabled when switched off or depleted. Start, toggle, frame updates and blackout scares share the same flashlight-state synchronisation. Battery consumption and recharge amounts are unchanged.
 
