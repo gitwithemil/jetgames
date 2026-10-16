@@ -76,17 +76,25 @@ test('the generated stages and survey interface work together', async t => {
     }
   });
 
-  await t.test('screen brightness adjusts scene exposure and saves locally', async () => {
+  await t.test('screen brightness adjusts scene exposure, flashlight diameter and saves locally', async () => {
+    await start();
     const slider = element('brightness-input');
+    const flashlight = qa.scene.getObjectByName('PLAYER_FLASHLIGHT');
+    assert.ok(Math.abs(flashlight.angle - .35) < 1e-12);
     slider.value = '150';
     await slider.dispatch('input');
     assert.equal(element('brightness-output').textContent, '150%');
     assert.ok(Math.abs(game.rendererInstances[0].toneMappingExposure - 1.38) < 1e-12);
+    assert.ok(Math.abs(flashlight.angle - .525) < 1e-12);
     assert.equal(JSON.parse(game.storage.get('sahur-settings')).brightness, 150);
     slider.value = '50';
     await slider.dispatch('input');
     assert.equal(element('brightness-output').textContent, '50%');
     assert.ok(Math.abs(game.rendererInstances[0].toneMappingExposure - .46) < 1e-12);
+    assert.ok(Math.abs(flashlight.angle - .175) < 1e-12);
+    slider.value = '100';
+    await slider.dispatch('input');
+    assert.ok(Math.abs(flashlight.angle - .35) < 1e-12);
   });
 
   await t.test('every menu stage starts with its objectives, cast and limited lighting', async () => {
