@@ -3,6 +3,7 @@ export function createAudio() {
   let ctx=null, master=null, ambient=null, buzzGain=null, hissGain=null, noiseBuffer=null;
   let volume=.38, paused=false, disposed=false, initialized=false;
   let nextKnock=5, nextBeat=0, lastStep=-100, lastCrank=-100, time=0;
+  let captionHandler=()=>{};
   const live=new Set();
   const loops=[];
   const state={distance:100,chasing:false,moving:false,sprinting:false,enemyType:"sahur",level:0};
@@ -91,8 +92,9 @@ export function createAudio() {
     }
   }
 
-  function knock() {
+  function knock(announce=true) {
     if(!available())return;
+    if(announce)captionHandler('Three hollow knocks echo through the halls.');
     const near=Math.max(0,1-state.distance/25);
     const level=.024+near*.105;
     const pan=Math.sin(time*.23)*(1-near)*.48;
@@ -106,7 +108,9 @@ export function createAudio() {
   }
   function entityCue(type='sahur'){
     if(!available())return;
-    if(type==='sahur'){knock();return;}
+    const captions={sahur:'Three hollow knocks echo through the halls.',ballerina:'A thin, wavering melody rings nearby.',bribri:'A low growl rumbles nearby.',spioniro:'A sharp electronic chirp cuts through the silence.',bombardino:'A heavy engine-like drone approaches.',smiler:'A high, wavering hum hangs in the air.',hound:'A guttural growl sounds nearby.',watcher:'A faint static hiss rises nearby.'};
+    captionHandler(captions[type]||'A strange sound echoes nearby.');
+    if(type==='sahur'){knock(false);return;}
     const at=ctx.currentTime,near=Math.max(0,1-state.distance/28),level=.025+near*.07;
     if(type==='ballerina'){[880,698,1046].forEach((f,i)=>tone(f,at+i*.11,.24,level*.45,'triangle',f*.94));}
     if(type==='bribri'){tone(205,at,.24,level*.8,'sawtooth',75);filteredNoise(at,.15,level*.7,900,2);}
@@ -119,6 +123,7 @@ export function createAudio() {
   function heartbeat() {
     const at=ctx.currentTime;
     const close=Math.max(0,1-state.distance/11);
+    captionHandler('A heartbeat pounds in your ears.');
     for(const offset of [0,.155]) tone(65,at+offset,.15,.025+close*.038,'sine',38);
   }
   function update({distance=100,moving=false,sprinting=false,chasing=false,enemyType='sahur',level=0,dt=0}={}) {
@@ -139,6 +144,7 @@ export function createAudio() {
   function step(sprinting=false) {
     if(!available()||ctx.currentTime-lastStep<.12)return;
     lastStep=ctx.currentTime;
+    captionHandler(sprinting?'Your footsteps pound against the floor.':'Your footsteps echo through the halls.');
     const level=sprinting?.065:.043;
     const textureFrequency=state.level===1?950:state.level===2?1800:230;
     tone(sprinting?80:67,ctx.currentTime,.13,level,'sine',35);
@@ -147,6 +153,7 @@ export function createAudio() {
   }
   function collect() {
     if(!available())return;
+    captionHandler('A small chime rings out.');
     const at=ctx.currentTime;
     [660,880,1320].forEach((frequency,index)=>tone(frequency,at+index*.07,.45,.07-index*.012));
   }
@@ -200,6 +207,9 @@ export function createAudio() {
     volume=Math.max(0,Math.min(1,Number(value)||0));
     if(ctx&&master)master.gain.setTargetAtTime(paused?0:volume,ctx.currentTime,.07);
   }
+  function setCaptionHandler(handler) {
+    captionHandler=typeof handler==='function'?handler:()=>{};
+  }
   function pause() {
     paused=true;
     if(ctx&&master) {
@@ -223,5 +233,5 @@ export function createAudio() {
     live.clear();loops.length=0;
     if(ctx&&ctx.state!=='closed')ctx.close().catch(()=>{});
   }
-  return {init,update,step,collect,sting,scarePrelude,jumpscare,stunPulse,torchClick,crank,win,knock,entityCue,setVolume,pause,resume,dispose};
+  return {init,update,step,collect,sting,scarePrelude,jumpscare,stunPulse,torchClick,crank,win,knock,entityCue,setVolume,setCaptionHandler,pause,resume,dispose};
 }

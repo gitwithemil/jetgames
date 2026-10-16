@@ -76,6 +76,66 @@ test('the generated stages and survey interface work together', async t => {
     }
   });
 
+  await t.test('accessibility, touch preferences and supply-shortage challenge work together', async () => {
+    await click('settings-button');
+    assert.equal(qa.settings.captions, true);
+    qa.caption('A test sound echoes.');
+    assert.equal(element('audio-caption').hidden, false);
+    assert.equal(element('audio-caption').textContent, 'A test sound echoes.');
+
+    await click('effects-toggle');
+    assert.equal(element('effects-toggle').getAttribute('aria-checked'), 'true');
+    assert.equal(JSON.parse(game.storage.get('sahur-settings')).reducedEffects, true);
+    await click('captions-toggle');
+    assert.equal(element('audio-caption').hidden, true);
+    qa.caption('This caption is disabled.');
+    assert.equal(element('audio-caption').hidden, true);
+    await click('captions-toggle');
+    assert.equal(element('audio-caption').hidden, true, 'Disabled captions must not reappear when re-enabled.');
+    await click('handed-toggle');
+    assert.equal(game.document.body.classList.contains('left-handed'), true);
+    assert.equal(element('touch-look-hint').textContent, 'Drag the left side to look');
+
+    const size = element('touch-size-input');
+    size.value = '120';
+    await size.dispatch('input');
+    assert.equal(element('touch-size-output').textContent, '120%');
+    assert.equal(game.document.documentElement.style['--touch-size'], '1.2');
+    const sensitivity = element('sensitivity-input');
+    sensitivity.value = '50';
+    await sensitivity.dispatch('input');
+    const yawAtDefault = qa.state.yaw;
+    qa.touchLook(10, 0);
+    const defaultTouchTurn = Math.abs(qa.state.yaw - yawAtDefault);
+    sensitivity.value = '100';
+    await sensitivity.dispatch('input');
+    const yawAtHigh = qa.state.yaw;
+    qa.touchLook(10, 0);
+    assert.ok(Math.abs(qa.state.yaw - yawAtHigh) > defaultTouchTurn * 1.99);
+
+    await game.document.querySelector('[data-challenge="scarcity"]').dispatch('click');
+    assert.equal(qa.settings.challenge, 'scarcity');
+    assert.equal(JSON.parse(game.storage.get('sahur-settings')).challenge, 'scarcity');
+
+    await click('effects-toggle');
+    await click('handed-toggle');
+    assert.equal(element('touch-look-hint').textContent, 'Drag the right side to look');
+    size.value = '100';
+    await size.dispatch('input');
+    sensitivity.value = '50';
+    await sensitivity.dispatch('input');
+    await game.document.querySelector('.close-settings').dispatch('click');
+    await start();
+    assert.equal(qa.state.battery, 65);
+    assert.equal(qa.state.decoys, 1);
+    qa.complete(qa.world.fuses[0]);
+    assert.equal(qa.state.score, 313, 'The optional challenge awards a 25% score bonus.');
+    qa.menu();
+    await click('settings-button');
+    await game.document.querySelector('[data-challenge="standard"]').dispatch('click');
+    await game.document.querySelector('.close-settings').dispatch('click');
+  });
+
   await t.test('screen brightness adjusts scene exposure, flashlight beam and saves locally', async () => {
     await start();
     const slider = element('brightness-input');
