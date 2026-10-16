@@ -49,8 +49,8 @@ function saveSettings(){ try{localStorage.setItem('sahur-settings',JSON.stringif
 function formatTime(seconds){return `${Math.floor(seconds/60).toString().padStart(2,'0')}:${Math.floor(seconds%60).toString().padStart(2,'0')}`;}
 function setVolume(){audio.setVolume(settings.volume/100*.65);document.querySelectorAll('.sound-button').forEach(b=>{b.classList.toggle('muted',settings.volume===0);b.setAttribute('aria-label',settings.volume===0?'Unmute audio':'Mute audio');});}
 function setBrightness(){
-  if(renderer)renderer.toneMappingExposure=.92*settings.brightness/100;
-  if(flashlight)flashlight.angle=BEAMS[beamMode].angle*settings.brightness/100;
+  if(renderer)renderer.toneMappingExposure=settings.brightness/100;
+  if(flashlight)syncFlashlight();
 }
 
 try {
@@ -269,7 +269,7 @@ addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='KeyE'){holdTarget=
 function syncFlashlight(suppressed=false){
  const profile=BEAMS[beamMode],enabled=flashlightOn&&battery>0&&!suppressed&&!cranking;
  flashlight.visible=enabled;flashlight.angle=profile.angle*settings.brightness/100;flashlight.distance=profile.range;flashlight.penumbra=profile.penumbra;
- flashlight.intensity=profile.intensity*(battery<20?.6+.4*battery/20:1);fillLight.intensity=enabled?.018:0;
+ flashlight.intensity=profile.intensity*Math.sqrt(settings.brightness/100)*(battery<20?.6+.4*battery/20:1);fillLight.intensity=enabled?.018:0;
 }
 function cycleBeam(){
  if(mode!=='playing'||scare)return;let next=BEAM_MODES[(BEAM_MODES.indexOf(beamMode)+1)%BEAM_MODES.length];

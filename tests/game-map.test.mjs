@@ -70,31 +70,43 @@ test('the generated stages and survey interface work together', async t => {
     assert.ok(qa.scene.children.some(object => object.isGroup && object.children.some(child => child.isInstancedMesh)), 'World geometry was built.');
     assert.equal(String(element('brightness-input').value), '100');
     assert.equal(element('brightness-output').textContent, '100%');
-    assert.equal(game.rendererInstances[0].toneMappingExposure, .92);
+    assert.equal(game.rendererInstances[0].toneMappingExposure, 1);
     for (const id of ['map-open-button', 'touch-map', 'map-resume', 'map-clear-waypoint']) {
       assert.ok((element(id).events.get('click') ?? []).length, `${id} must have a click binding.`);
     }
   });
 
-  await t.test('screen brightness adjusts scene exposure, flashlight diameter and saves locally', async () => {
+  await t.test('screen brightness adjusts scene exposure, flashlight beam and saves locally', async () => {
     await start();
     const slider = element('brightness-input');
     const flashlight = qa.scene.getObjectByName('PLAYER_FLASHLIGHT');
+    const baseBeam = 62;
     assert.ok(Math.abs(flashlight.angle - .35) < 1e-12);
+    assert.equal(flashlight.intensity, baseBeam);
     slider.value = '150';
     await slider.dispatch('input');
     assert.equal(element('brightness-output').textContent, '150%');
-    assert.ok(Math.abs(game.rendererInstances[0].toneMappingExposure - 1.38) < 1e-12);
+    assert.ok(Math.abs(game.rendererInstances[0].toneMappingExposure - 1.5) < 1e-12);
     assert.ok(Math.abs(flashlight.angle - .525) < 1e-12);
+    assert.ok(Math.abs(flashlight.intensity - baseBeam * Math.sqrt(1.5)) < 1e-12);
     assert.equal(JSON.parse(game.storage.get('sahur-settings')).brightness, 150);
     slider.value = '50';
     await slider.dispatch('input');
     assert.equal(element('brightness-output').textContent, '50%');
-    assert.ok(Math.abs(game.rendererInstances[0].toneMappingExposure - .46) < 1e-12);
+    assert.ok(Math.abs(game.rendererInstances[0].toneMappingExposure - .5) < 1e-12);
     assert.ok(Math.abs(flashlight.angle - .175) < 1e-12);
+    assert.ok(Math.abs(flashlight.intensity - baseBeam * Math.sqrt(.5)) < 1e-12);
     slider.value = '100';
     await slider.dispatch('input');
     assert.ok(Math.abs(flashlight.angle - .35) < 1e-12);
+    assert.equal(flashlight.intensity, baseBeam);
+    qa.beam();
+    assert.equal(qa.state.beamMode, 'flood');
+    assert.ok(Math.abs(flashlight.angle - .62) < 1e-12);
+    slider.value = '150';
+    await slider.dispatch('input');
+    assert.ok(Math.abs(flashlight.angle - .93) < 1e-12);
+    assert.ok(Math.abs(flashlight.intensity - 32 * Math.sqrt(1.5)) < 1e-12);
   });
 
   await t.test('every menu stage starts with its objectives, cast and limited lighting', async () => {
