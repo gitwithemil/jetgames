@@ -1,3 +1,4 @@
+import {createGait,pivot} from './enemy-motion.js';
 import { BRAINROTS, createBrainrot } from './brainrots.js';
 import { createSahur } from './sahur.js';
 export function createEnemy(T,type){
@@ -21,16 +22,17 @@ export function createEnemy(T,type){
   }else if(type==='hound'){
     sphere(flesh,0,.92,0,.32,.32,.67);sphere(flesh,0,1.25,.6,.32,.3,.34);sphere(voidMat,0,1.16,.92,.24,.14,.16);
     for(let i=0;i<9;i++){const tooth=m(new T.ConeGeometry(.023,.12,6),bone,(i-4)*.052,1.18,1.065);tooth.rotation.z=Math.PI;}
-    for(const sign of [-1,1])for(const z of [-.45,.4]){const upper=limb([sign*.25,.95,z],[sign*.5,.4,z+.15],.055);const lower=limb([sign*.5,.4,z+.15],[sign*.46,.05,z+.45],.035);legs.push({upper,lower,phase:sign*(z>0?1:-1)});sphere(voidMat,sign*.46,.06,z+.45,.1,.06,.18);}
+    for(const sign of [-1,1])for(const z of [-.45,.4]){const upper=limb([sign*.25,.95,z],[sign*.5,.4,z+.15],.055);const lower=limb([sign*.5,.4,z+.15],[sign*.46,.05,z+.45],.035);const foot=sphere(voidMat,sign*.46,.06,z+.45,.1,.06,.18);const hip=pivot(T,rig,[sign*.25,.95,z],[upper,lower,foot],`HOUND_HIP_${sign}_${z}`),knee=pivot(T,hip,[sign*.25,-.55,.15],[lower,foot],'HOUND_KNEE');legs.push({hip,knee,phase:sign*(z>0?1:-1)});}
     for(let i=0;i<8;i++)sphere(bone,0,1.24,-.5+i*.11,.045,.065,.045);
     for(const sign of [-1,1])limb([sign*.2,1.43,.48],[sign*.25,1.77,.29],.065);
   }else{
     sphere(flesh,0,1.73,0,.24,.69,.18);sphere(flesh,0,2.65,0,.19,.27,.15);
     for(const x of [-.065,.065])sphere(glow,x,2.68,.145,.032,.04,.01);
     sphere(voidMat,0,2.51,.146,.052,.08,.012);
-    for(const sign of [-1,1]){limb([sign*.22,2.14,0],[sign*.45,1.2,.07],.045);limb([sign*.45,1.2,.07],[sign*.49,.51,.1],.028);for(let i=0;i<3;i++)limb([sign*.49+(i-1)*.027,.52,.1],[sign*.5+(i-1)*.04,.31,.16],.009);const leg=limb([sign*.15,1.2,0],[sign*.2,.05,.04],.05);legs.push({upper:leg,phase:sign});}
+    for(const sign of [-1,1]){limb([sign*.22,2.14,0],[sign*.45,1.2,.07],.045);limb([sign*.45,1.2,.07],[sign*.49,.51,.1],.028);for(let i=0;i<3;i++)limb([sign*.49+(i-1)*.027,.52,.1],[sign*.5+(i-1)*.04,.31,.16],.009);const leg=limb([sign*.15,1.2,0],[sign*.2,.05,.04],.05);const hip=pivot(T,rig,[sign*.15,1.2,0],[leg],`WATCHER_HIP_${sign}`);legs.push({hip,phase:sign});}
   }
-  return {group,type,name:{smiler:'The Smiler',hound:'The Hound',watcher:'The Watcher'}[type],faceHeight:type==='hound'?1.25:type==='smiler'?2.15:2.65,animate(time,speed=0,angry=false){rig.position.y=Math.sin(time*(type==='smiler'?1.6:8))*(type==='smiler'?.1:.018*speed);for(const l of legs)l.upper.rotation.x=Math.sin(time*9+l.phase)*.09*speed;rig.rotation.z=type==='smiler'?Math.sin(time*.8)*.055:0;}};
+  const gait=createGait();
+  return {group,type,name:{smiler:'The Smiler',hound:'The Hound',watcher:'The Watcher'}[type],faceHeight:type==='hound'?1.25:type==='smiler'?2.15:2.65,animate(time,speed=0,angry=false){const {phase,weight,step,lift}=gait(time,speed);rig.position.y=type==='smiler'?Math.sin(time*1.6)*.08:type==='hound'?lift*.055:lift*.018;for(const l of legs){const swing=Math.sin(phase+(l.phase<0?Math.PI:0));l.hip.rotation.x=swing*(type==='hound'?.45:.3)*weight;if(l.knee)l.knee.rotation.x=Math.max(0,-swing)*.65*weight;}rig.rotation.z=type==='smiler'?Math.sin(time*.8)*.055:step*(type==='hound'?.025:.035);rig.rotation.x=type==='hound'&&angry?-.05*weight:0;}};
 }
 // Enemy senses are separate from steering, so each encounter rewards a different response.
 export function senseEnemy(type,{distance,los,moving,sprinting,crouching,flashlight,observed,working,difficulty=1,vision=los,illuminated=flashlight&&observed,signature=1}){

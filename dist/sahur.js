@@ -1,4 +1,5 @@
 // A procedural, articulated wooden Sahur. All face geometry points toward +Z.
+import {createGait} from './enemy-motion.js';
 export function createSahur(THREE) {
   const group = new THREE.Group();
   group.name = 'Tung Tung Tung Sahur';
@@ -203,16 +204,18 @@ export function createSahur(THREE) {
   // Offset the idle bat hand away from the body to preserve the outline.
   arms[0].shoulder.rotation.z=-.15;
   arms[1].shoulder.rotation.z=.12;
+  const gait=createGait();
   function animate(time, speed=0, angry=false) {
-    const walking=Math.min(1,Math.abs(Number(speed)||0));
-    const phase=time*(angry?9.4:6.2);
+    const {weight:walking,phase}=gait(time,speed);
     const stride=Math.sin(phase)*.52*walking;
     rig.position.y=(Math.abs(Math.sin(phase))*.025*walking)+Math.sin(time*1.9)*.009;
-    body.rotation.z=Math.sin(phase)*.025*walking;
+    rig.rotation.z=Math.sin(phase)*.035*walking;
+    body.rotation.z=-Math.sin(phase)*.045*walking;
+    body.rotation.x=angry?-.06*walking:0;
     body.rotation.y=Math.sin(time*.8)*.017*(1-walking);
     for(const leg of legs) {
       leg.hip.rotation.x=stride*leg.sign;
-      leg.knee.rotation.x=Math.max(0,-Math.sin(phase)*leg.sign)*.57*walking;
+      leg.knee.rotation.x=Math.max(0,-Math.sin(phase)*leg.sign)*.85*walking;
       leg.ankle.rotation.x=-leg.knee.rotation.x*.27;
     }
     for(const arm of arms) {

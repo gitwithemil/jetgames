@@ -135,3 +135,10 @@ New expeditions randomize objectives, supplies and enemy starting positions with
 After holding E at a relay or valve, an accessible, paused terminal opens: Poolrooms require branch routing; Pipeworks require equal pressure and the requested total. Cancelling leaves the machine unfinished. Archive tapes encode a three-digit exit signal with a documented +10 offset. Decode the exit terminal, then hold E at the door for eight noisy seconds to transmit and escape. Leaving, releasing E or pausing cancels extraction; the decoded signal persists in saves. The ending resolves all four environments.
 
 The HUD hides idle heat, the hand-crank above 25% battery, early control hints after 45 seconds, and inactive weapon details. Touch and keyboard controls remain available.
+
+
+## Enemy motion and proximity cues
+
+Enemy gait advances with actual movement speed and eases back to idle. Sahur has stronger knee flexion, opposing arm swing and body weight transfer; articulated hips drive the bird and spy strides, Ballerina steps lightly, and the Hound uses alternating diagonal limbs. Smiler gliding and Bombardino hovering retain their distinct silhouettes. Frozen and stunned enemies hold their poses.
+
+A slow violet peripheral haze and a short on-screen warning grow stronger inside 12 metres of an unstunned enemy. It also warns before a chase. Training, grace periods, menus, pauses and scare sequences suppress it. Reduced effects and reduced camera motion use a subdued steady edge treatment. No camera shake or strobing is added.

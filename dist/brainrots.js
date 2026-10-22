@@ -1,3 +1,4 @@
+import {createGait,rigBiped} from './enemy-motion.js';
 export const BRAINROTS=['ballerina','bribri','spioniro','bombardino'];
 // Original procedural interpretations; no downloaded models or audio samples.
 export function createBrainrot(T,type){
@@ -55,10 +56,15 @@ export function createBrainrot(T,type){
       const prop=new T.Group();prop.position.set(sign*.8,1.69,.41);rig.add(prop);box(.055,.65,.026,dark,0,0,0,prop);box(.65,.055,.026,dark,0,0,0,prop);props.push(prop);}
     for(let n=0;n<4;n++)box(.11,.07,.13,gold,0,1.89,-.25-n*.21);
   }
+  const gait=createGait(),joints=type==='bombardino'?[]:rigBiped(T,rig,type==='ballerina'?1:type==='bribri'?.7:.46,type==='ballerina'?.5:type==='bribri'?.35:.24);
   return {group,type,name,faceHeight,frontDepth,aimHeight,animate(time,speed=0,angry=false){
-    rig.position.y=type==='bombardino'?Math.sin(time*2.4)*.045:Math.abs(Math.sin(time*7))*speed*.025;
-    rig.rotation.z=type==='ballerina'?Math.sin(time*3)*.07:0;rig.rotation.y=type==='ballerina'&&speed>0?Math.sin(time*(angry?8:2))*.7:0;
-    for(const leg of legs)leg.m.rotation.x=Math.sin(time*9)*.08*speed*leg.sign;
+    const {phase,weight,step,lift}=gait(time,speed);
+    rig.position.y=type==='bombardino'?Math.sin(time*2.4)*.045:lift*(type==='ballerina'?.045:.035);
+    rig.rotation.z=type==='ballerina'?Math.sin(phase)*.07*weight:step*.045;
+    rig.rotation.y=type==='ballerina'?Math.sin(phase*.5)*.22*weight:step*.035;
+    rig.rotation.x=type==='bribri'&&angry?-.12*weight:0;
+    for(const leg of joints){const swing=Math.sin(phase+(leg.sign<0?Math.PI:0));leg.hip.rotation.x=swing*(type==='ballerina'?.38:.5)*weight;leg.knee.rotation.x=Math.max(0,-swing)*.6*weight;}
+
     if(type==='bombardino')for(const prop of props)prop.rotation.z=time*(angry?39:24);
   }};
 }

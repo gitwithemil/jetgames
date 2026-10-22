@@ -10,6 +10,7 @@ import { createAudio } from './audio.js';
 import { readExpedition, writeExpedition, clearExpedition } from './expedition-save.js';
 import { createPursuit, updatePursuit, createBrriCharge, updateBrriCharge, deathHint } from './encounters.js';
 
+import {proximityStrength} from './enemy-motion.js';
 import {inVisionCone,soundBearing,controlPuzzle,signalCode} from './survival.js';
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches;
@@ -165,6 +166,7 @@ function positionMenuEnemy(){
   sahur.group.rotation.y=Math.atan2(dx,dz);
 }
 function showMenu(){
+  $('proximity-cue').hidden=true;
   clearScare();$('stage-screen').hidden=true;updateLevelCards();
   stunView?.hide();Object.values(enemyModels).forEach(m=>m.stunAura.visible=false);mode='menu';keys.clear();touch.x=0;touch.y=0;touch.sprint=false;
   if(document.pointerLockElement)document.exitPointerLock();
@@ -297,6 +299,7 @@ async function startGame(requested,options={}){
   notify(restored?'EXPEDITION RESUMED · Your progress and equipment are restored.':options.resume?.suspended?'Saved position unavailable. Your stage checkpoint and equipment are restored.':`LEVEL ${world.level.code} — ${world.level.tip}`,6500);
 }
 function pauseGame(){
+  $('proximity-cue').hidden=true;
   if(mode!=='playing')return;mode='paused';touch.crank=false;cranking=false;interactHeld=false;holdTarget=null;holdProgress=0;keys.clear();touch.x=0;touch.y=0;touch.sprint=false;
   if(document.pointerLockElement)document.exitPointerLock();
   $('pause-screen').hidden=false;$('interaction').hidden=true;audio.pause();
@@ -308,6 +311,7 @@ function resumeGame(){
   if(mode!=='paused')return;mode='playing';$('pause-screen').hidden=true;lastTime=performance.now();renderTraining();audio.resume();lockPointer();
 }
 function endGame(won){
+  $('proximity-cue').hidden=true;
   if(mode!=='playing')return;clearScare();mode=won?'won':'dead';keys.clear();touch.x=0;touch.y=0;
   if(document.pointerLockElement)document.exitPointerLock();
   $('hud').hidden=true;$('end-screen').hidden=false;
@@ -552,6 +556,7 @@ function updateLevelCards(){
   $('entity-name-menu').textContent=enemyModels[LEVELS[selectedLevel].enemy]?.name||'Tung Tung Tung Sahur';
 }
 function finishLevel(){
+  $('proximity-cue').hidden=true;
   award(Math.max(100,Math.round(900-elapsed*2)));
   if(levelIndex===LEVELS.length-1){endGame(true);return;}
   clearScare();mode='cleared';keys.clear();touch.x=0;touch.y=0;touch.sprint=false;interactHeld=false;hadPointerLock=false;
@@ -663,7 +668,7 @@ function updateEnemy(dt){
         }
       }
     }
-    model.animate(elapsedWorld,speed?speed/3:0,a.chasing);
+    if(!senses.frozen)model.animate(elapsedWorld,speed?speed/3:0,a.chasing);
     d=Math.hypot(pos.x-player.x,pos.z-player.z);
     const canAttack=model.type!=='bribri'||a.charge.canAttack;
     if(!senses.frozen&&canAttack&&d<.9&&world.lineOfSight(pos,player)){
@@ -697,7 +702,7 @@ function triggerScare(fatal=false,variant){
   const selected=variant||scareDirector.draw(levelIndex,zone?.design,'room',settings.volume>0),side=Math.random()<.5?-1:1;scareSequence++;
   scare={...scareTimeline(type,selected,fatal),fatal,time:0,side,hitSound:false};scareCooldown=elapsed+38;
   keys.clear();touch.x=0;touch.y=0;touch.sprint=false;holdTarget=null;holdProgress=0;interactHeld=false;
-  touch.crank=false;cranking=false;stunView.hide();heldFlashlight.visible=false;$('interaction').hidden=true;$('scare-overlay').hidden=false;document.body.classList.add('scaring');
+  touch.crank=false;cranking=false;stunView.hide();heldFlashlight.visible=false;$('interaction').hidden=true;$('scare-overlay').hidden=false;document.body.classList.add('scaring');$('proximity-cue').hidden=true;
   world.setBlackout(scare.variant==='blackout'?3:1.5);audio.scarePrelude(type,scare.variant,scare.side);applyScarePose(scarePose(scare,0,settings.motion));return true;
 }
 function updateScare(dt){
@@ -761,6 +766,9 @@ function updateHUD(dt){
   $('stun-status').textContent=!weaponOwned?'LOCKED':ammo<=0?'EMPTY':elapsed<stunReady?`${Math.ceil(stunReady-elapsed)}s`:String(ammo);
   $('weapon-quest').textContent=weaponOwned?`STUN PROJECTOR · ${ammo}/3 CHARGES · ${weaponParts.size}/3 SPARE PARTS`:`RARE WEAPON · ${weaponParts.size}/3 PARTS · COIL / CAPACITOR / LENS → WORKBENCH`;
   $('decoy-count').textContent=String(decoys);$('score-value').textContent=String(score);$('ping-status').textContent=elapsed<pingReady?`${Math.ceil(pingReady-elapsed)}s`:'READY';
+  const proximity=proximityStrength(distanceToEnemy,!training.active&&elapsed>=enemyGraceUntil&&!scare);
+  const cue=$('proximity-cue');cue.hidden=proximity<=0;cue.style.setProperty('--proximity',String(proximity));cue.classList.toggle('still',settings.reducedEffects||!settings.motion);
+  const proximityLabel=proximity>.65?'SOMETHING IS VERY CLOSE':proximity>0?'SOMETHING IS CLOSE':'';if($('proximity-label').textContent!==proximityLabel)$('proximity-label').textContent=proximityLabel;
   $('danger-overlay').style.opacity=chasing?Math.max(0,1-distanceToEnemy/15)*.7:0;
   audio.update({distance:training.active||elapsed<enemyGraceUntil?50:distanceToEnemy,moving,sprinting,chasing,enemyType:threat?.model.type||world.level.enemy,level:levelIndex,dt});
 }
