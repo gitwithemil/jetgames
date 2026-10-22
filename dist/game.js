@@ -353,7 +353,7 @@ $('training-button').addEventListener('click',()=>startGame(0,{training:true}));
 $('training-skip').addEventListener('click',()=>finishTraining(true));
 $('save-quit-button').addEventListener('click',saveAndQuit);
 $('touch-crouch').addEventListener('click',()=>{if(mode!=='playing')return;touch.crouch=!touch.crouch;$('touch-crouch').setAttribute('aria-pressed',String(touch.crouch));});
-document.querySelectorAll('[data-level]').forEach(b=>b.addEventListener('click',()=>{if(mode!=='menu')return;selectedLevel=Number(b.dataset.level);loadLevel(selectedLevel);positionMenuEnemy();updateLevelCards();}));
+document.querySelectorAll('[data-level]').forEach(b=>b.addEventListener('click',()=>{if(mode!=='menu')return;selectedLevel=Number(b.dataset.level);loadLevel(selectedLevel);positionMenuEnemy();updateLevelCards();$('chapter-select').open=false;}));
 $('beam-button').addEventListener('click',cycleBeam);
 $('crank-button').addEventListener('pointerdown',e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);touch.crank=true;});
 $('crank-button').addEventListener('pointerup',()=>touch.crank=false);$('crank-button').addEventListener('pointercancel',()=>touch.crank=false);
@@ -545,9 +545,10 @@ function updateLevelCards(){
   document.querySelectorAll('[data-level]').forEach(b=>{const i=Number(b.dataset.level);b.classList.toggle('selected',i===selectedLevel);b.setAttribute('aria-pressed',String(i===selectedLevel));});
   const resumeLevel=savedExpedition?.checkpoint.levelIndex??checkpoint;
   $('continue-button').hidden=!savedExpedition&&checkpoint===0;$('continue-button').textContent=`${savedExpedition?.suspended?'RESUME':'CONTINUE'} · ${LEVELS[resumeLevel].name.toUpperCase()}`;
-  $('play-label').textContent=savedExpedition?'START NEW EXPEDITION':'ENTER THE BACKROOMS';
+  $('play-label').textContent=savedExpedition?'NEW EXPEDITION':'ENTER THE BACKROOMS';
+  $('menu').classList.toggle('has-saved-run',!$('continue-button').hidden);
   $('selected-level-code').textContent=LEVELS[selectedLevel].code;$('selected-level-name').textContent=LEVELS[selectedLevel].name;
-  let best=0;try{best=Number(localStorage.getItem('sahur-best-score'))||0;}catch{}$('best-score').textContent=best?`BEST EXPEDITION / ${best} PTS`:'NO RECORDED ESCAPES';$('selected-level-brief').textContent=LEVELS[selectedLevel].brief;
+  let best=0;try{best=Number(localStorage.getItem('sahur-best-score'))||0;}catch{}$('best-score').textContent=best?`BEST EXPEDITION / ${best} PTS`:'NO RECORDED ESCAPES';$('best-score').hidden=!best;$('selected-level-brief').textContent=LEVELS[selectedLevel].brief;
   $('entity-name-menu').textContent=enemyModels[LEVELS[selectedLevel].enemy]?.name||'Tung Tung Tung Sahur';
 }
 function finishLevel(){

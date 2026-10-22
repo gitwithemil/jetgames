@@ -1,0 +1,55 @@
+/* Main menu: a single quiet column over the live environment. */
+#header{left:6vw;right:6vw;top:30px}
+#header .build-tag,#header .brand-symbol,#header .brand-edition{display:none}
+#header .brand{font-size:10px;letter-spacing:2px;color:#d6d9c5}
+#header .header-right{gap:10px}
+#header .icon-button{width:40px;height:40px;border:1px solid #e1e8c217;border-radius:50%;opacity:.8}
+.scene-shade{background:linear-gradient(90deg,#0c100cf5 0%,#0c100cd9 28%,#0c100c66 55%,#0c100c0a 80%),linear-gradient(0deg,#0c100cd9,transparent 24%,transparent 80%,#0c100c66)}
+#menu{display:flex;align-items:center;overflow-y:auto;padding:110px 9vw 105px;scrollbar-width:thin}
+#menu .menu-copy{width:370px;max-width:100%;flex-shrink:0}
+#menu .eyebrow{font-size:9px;letter-spacing:2.6px;color:#9da68d}
+#menu h1{font-size:clamp(70px,6.5vw,100px);margin:24px 0 22px;line-height:.94}
+#menu h1>span{font-size:.67em;letter-spacing:3px;font-weight:500;color:#e8e9de}
+#menu h1 strong{font-size:1.45em;letter-spacing:-1.5px;line-height:.96;margin-top:6px}
+#menu .title-period{color:#8b9b58}
+#menu .intro-copy{font-size:14px;line-height:1.8;color:#adb5a0;margin:0 0 30px}
+#menu .chapter-select{width:100%;margin-bottom:14px;border:1px solid #dbe5b822;background:#131a13b8;border-radius:4px}
+#menu .chapter-select summary{display:flex;align-items:center;gap:16px;min-height:68px;padding:13px 18px;cursor:pointer;list-style:none}
+#menu summary::-webkit-details-marker{display:none}
+#menu summary:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+#menu .chapter-number{font:30px/1 var(--display);color:#a2b37b;padding:0 14px 0 0;border-right:1px solid #dbe5b822}
+#menu summary small{display:block;font:8px/1.5 var(--mono);letter-spacing:1.5px;color:#8c997d}
+#menu summary strong{display:block;font:500 13px/1.5 var(--sans);margin-top:3px;color:#e3e8d6}
+#menu .chapter-change{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:11px;color:#b1bba0}
+#menu .chapter-change>span{transition:transform .2s}
+#menu details[open] .chapter-change>span{transform:rotate(180deg)}
+#menu .level-picker{position:static;width:auto;max-width:none;margin:0;padding:8px 12px 14px;background:transparent;border:0;backdrop-filter:none}
+#menu .level-cards{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#menu .level-card{min-height:64px;padding:10px;gap:9px;display:flex;background:#0e150fd9;border:1px solid #c9db9c17;border-radius:3px;text-align:left}
+#menu .level-card>span{font:22px var(--display);color:#87976f}
+#menu .level-card strong{font-size:11px;font-weight:500}
+#menu .level-card small,#menu .level-card>b{display:none}
+#menu .level-card.selected{background:#bed87912;border-color:#c8df7d80}
+#menu .level-card.selected strong{color:var(--accent)}
+#menu .level-picker p{font-size:11px;line-height:1.6;color:#a9b49b;margin:12px 4px 0}
+#menu .menu-play-actions{display:flex;flex-direction:column;gap:10px}
+#menu #play-button,#menu #continue-button{width:100%;max-width:none;min-height:56px;margin:0;padding:0 20px;border-radius:4px;font:500 11px/1.5 var(--mono);letter-spacing:1px}
+#menu #play-button{display:flex;gap:12px;justify-content:flex-start}
+#menu #continue-button{display:flex;align-items:center;justify-content:center;background:var(--accent);color:#17200f;border:1px solid var(--accent)}
+#menu.has-saved-run #play-button{background:#c6da8810;border:1px solid #d2e2a62e;color:#c8d2b6;min-height:45px}
+#menu.has-saved-run #play-button .play-arrow{display:none}
+#menu .menu-actions{justify-content:flex-start;gap:22px;margin-top:18px;max-width:none}
+#menu .menu-actions button{font-size:12px;min-height:40px;padding:0;color:#aeb89f}
+#menu .menu-actions button:hover{color:var(--accent)}
+#menu .menu-actions>span{height:12px}
+#menu .menu-record{display:block;margin-top:16px;font-size:8px;letter-spacing:1px;color:#8a9978}
+#menu .menu-atmosphere{position:fixed;right:9vw;bottom:17vh;display:flex;gap:14px;align-items:center;pointer-events:none}
+#menu .menu-atmosphere>span{height:1px;width:35px;background:#d1deb04d}
+#menu .menu-atmosphere p{font:9px var(--mono);letter-spacing:3px;color:#a2ae90}
+#menu .menu-footnote{position:fixed;left:9vw;right:9vw;bottom:30px;display:flex;justify-content:space-between;font:9px var(--mono);letter-spacing:.6px;color:#89957c;pointer-events:none}
+#guide-dialog #training-button{width:100%;max-width:none;margin:20px 0;padding:12px 16px;min-height:48px}
+@media(min-width:801px) and (max-height:740px){#menu{padding-top:95px;padding-bottom:65px;align-items:flex-start}#menu h1{font-size:70px;margin:16px 0}#menu .intro-copy{margin-bottom:18px;font-size:12px}#menu .chapter-select summary{min-height:58px}#menu .menu-footnote{bottom:18px}}
+@media(max-width:800px){#header{left:24px;right:24px;top:18px}#header .brand{font-size:8px;letter-spacing:1px}#menu{padding:105px 28px 80px;align-items:center}#menu .menu-copy{width:360px}#menu h1{font-size:78px;margin-top:20px}#menu .menu-atmosphere{display:none}#menu .menu-footnote{left:28px;right:28px;bottom:20px;font-size:8px}.scene-shade{background:linear-gradient(90deg,#0c100cf2,#0c100c91 75%),linear-gradient(0deg,#0c100cdd,transparent 45%)}#menu .eyebrow{font-size:8px;letter-spacing:2px}}
+@media(max-width:800px) and (max-height:740px){#menu{align-items:flex-start;padding-top:95px}#menu h1{font-size:64px;margin:14px 0}#menu .intro-copy{margin-bottom:18px;font-size:12px}#menu .chapter-select summary{min-height:56px}#menu #play-button,#menu #continue-button{min-height:50px}#menu .menu-actions{margin-top:10px}}
+@media(max-height:480px){#menu{padding-top:82px;padding-bottom:30px}#menu .menu-footnote{display:none}#header{top:15px}}
+@media(prefers-reduced-motion:reduce){#menu *{transition:none}}
