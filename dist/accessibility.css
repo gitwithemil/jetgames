@@ -1,7 +1,5 @@
 #audio-caption{position:fixed;z-index:9;left:50%;bottom:142px;transform:translateX(-50%);max-width:min(80vw,520px);padding:8px 14px;border:1px solid #dbea7940;background:#10170de8;color:#f0efd9;text-align:center;font:11px/1.5 var(--sans);letter-spacing:.2px;pointer-events:none}
 .meter-row[role=meter]{min-width:0}
-.meter-row #stamina-fill{transition:width .15s,background .15s}
-.meter-row[aria-valuenow="0"] #stamina-fill{background:#e87464!important}
 @media(pointer:coarse){
   #joystick{width:calc(105px * var(--touch-size,1));height:calc(105px * var(--touch-size,1))}
   #joystick-knob{width:calc(43px * var(--touch-size,1));height:calc(43px * var(--touch-size,1));left:calc(30px * var(--touch-size,1));top:calc(30px * var(--touch-size,1))}
@@ -12,6 +10,8 @@
   body.left-handed #mobile-controls>span{right:auto;left:25px;text-align:left}
   #audio-caption{bottom:205px;max-width:80vw;font-size:10px}
 }
+.meter-row #stamina-fill{transition:width .15s,background .15s}
+.meter-row[aria-valuenow="0"] #stamina-fill{background:#e87464!important}
 @media(prefers-reduced-motion:reduce){
   #audio-caption{transition:none}
   .meter-row #stamina-fill{transition:none}

@@ -7,16 +7,19 @@ import { createWorld } from './world.js';
 import { createEnemy, senseEnemy } from './enemies.js';
 import { LEVELS } from './levels.js';
 import { createAudio } from './audio.js';
+import { readExpedition, writeExpedition, clearExpedition } from './expedition-save.js';
+import { createPursuit, updatePursuit, createBrriCharge, updateBrriCharge, deathHint } from './encounters.js';
 
+import {inVisionCone,soundBearing,controlPuzzle,signalCode} from './survival.js';
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches;
-const defaultSettings = { volume:65, sensitivity:50, brightness:100, difficulty:'normal', challenge:'standard', motion:!matchMedia('(prefers-reduced-motion:reduce)').matches, reducedEffects:false, captions:true, leftHanded:false, touchSize:100, quality:coarse?'low':'high', scares:true };
+const defaultSettings = { volume:65, sensitivity:50, brightness:200, difficulty:'normal', challenge:'standard', motion:!matchMedia('(prefers-reduced-motion:reduce)').matches, reducedEffects:false, captions:true, leftHanded:false, touchSize:100, quality:coarse?'low':'high', scares:true };
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem('sahur-settings') || '{}'); } catch {}
 const settings = { ...defaultSettings, ...saved };
 settings.volume = Math.max(0,Math.min(100,Number(settings.volume)||0));
 settings.sensitivity = Math.max(10,Math.min(100,Number(settings.sensitivity)||50));
-settings.brightness = Math.max(50,Math.min(150,Number(settings.brightness)||100));
+settings.brightness = Math.max(50,Math.min(250,Number(settings.brightness)||defaultSettings.brightness));
 if (!['easy','normal','hard'].includes(settings.difficulty)) settings.difficulty='normal';
 if (!['standard','scarcity'].includes(settings.challenge)) settings.challenge='standard';
 settings.motion=settings.motion!==false;
@@ -29,6 +32,12 @@ const audio = createAudio();
 const scareDirector=createScareDirector();
 let levelIndex=0,selectedLevel=0,checkpoint=0,score=0,totalElapsed=0,decoys=3,decoy=null,pingReady=0,holdTarget=null,holdProgress=0,interactHeld=false;
 let actors=[],enemyModels={},nearestActor=null,stageBaseScore=0,lastAttacker="Entity";
+let runSeed=0,puzzleTarget=null,archiveDecoded=false;
+let stageCheckpoint=null,savedExpedition=null,runRules={difficulty:settings.difficulty,challenge:settings.challenge};
+let lastDetection={type:'sahur',cause:'sight'},researchDiscovered=false;
+let quietUntil=0,lastChaseAt=-100,enemyGraceUntil=0;
+let training={active:false,step:0,complete:false,origin:null,crouchTime:0};
+try{savedExpedition=readExpedition(localStorage);}catch{}
 try{checkpoint=Math.max(0,Math.min(3,Number(localStorage.getItem('sahur-checkpoint'))||0));}catch{}
 let renderer, scene, camera, world, sahur, flashlight, fillLight, heldFlashlight,stunView;
 let weaponOwned=false,ammo=0,stunReady=0,weaponNoiseUntil=0,stageWeapon={owned:false,ammo:0};
@@ -44,7 +53,7 @@ const keys=new Set(), explored=new Set(), collected=new Set();
 const survey=createSurveyState(explored);
 let mapKeyboard=false;
 const direction=new THREE.Vector3(), toTarget=new THREE.Vector3();
-const touch={x:0,y:0,sprint:false,crank:false,lookId:null,lastX:0,lastY:0,joyId:null};
+const touch={x:0,y:0,sprint:false,crouch:false,crank:false,lookId:null,lastX:0,lastY:0,joyId:null};
 let scare=null, scareFace, scareLight, scareEffects, scareCooldown=0, pendingScare=0, nextAmbientScare=24;
 const scareRooms=new Set(),visitedRooms=new Set();
 let scareSequence=0,lastRoomId=null;
@@ -53,13 +62,42 @@ let captionTimer=0,lastCaptionAt=-Infinity;
 
 function notify(text,duration=3500) { $('toast').textContent=text; $('toast').classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>$('toast').classList.remove('show'),duration); }
 function showAudioCaption(text) {
-  if(!settings.captions||settings.volume===0||performance.now()-lastCaptionAt<650)return;
+  if(!settings.captions||performance.now()-lastCaptionAt<650)return;
   lastCaptionAt=performance.now();$('audio-caption').textContent=text;$('audio-caption').hidden=false;
   clearTimeout(captionTimer);captionTimer=setTimeout(()=>$('audio-caption').hidden=true,2600);
 }
 audio.setCaptionHandler(showAudioCaption);
 function saveSettings(){ try{localStorage.setItem('sahur-settings',JSON.stringify(settings));}catch{} }
-function award(points){const earned=Math.round(points*(settings.challenge==='scarcity'?1.25:1));score+=earned;return earned;}
+function renderTraining(){
+  const steps=[
+    ['Find your footing',coarse?'Move with the movement stick. Walk a few steps down the hall.':'Use WASD or the arrow keys to walk a few steps down the hall.'],
+    ['Move quietly',coarse?'Tap CROUCH, then stay low for a moment. Quiet movement keeps sound hunters away.':'Hold C for a moment to crouch. Quiet movement keeps sound hunters away.'],
+    ['Send them the other way',coarse?'Tap DECOY to throw a noise lure down the hall. Sound hunters investigate it.':'Press Q to throw a noise lure down the hall. Sound hunters investigate it.'],
+    ['Choose your light',coarse?'Tap FOCUS to cycle the beam. Flood saves power; Boost reaches farther and builds heat.':'Press B to cycle the beam. Flood saves power; Boost reaches farther and builds heat.']
+  ];
+  $('field-training').hidden=!training.active;
+  if(training.active){$('training-step').textContent=`FIELD TRAINING / ${training.step+1} OF 4`;$('training-title').textContent=steps[training.step][0];$('training-detail').textContent=steps[training.step][1];}
+  $('weapon-quest').hidden=!researchDiscovered||training.active;$('stun-button').hidden=!researchDiscovered||training.active;
+  $('decoy-button').hidden=training.active&&training.step<2;$('beam-button').hidden=training.active&&training.step<3;
+}
+function finishTraining(skipped=false){
+  if(!training.active)return;
+  if(training.step>=3)decoys=Math.min(5,decoys+1);
+  training.active=false;training.complete=true;
+  try{localStorage.setItem('sahur-field-training-v1','complete');}catch{}
+  enemyGraceUntil=elapsed+10/difficulty;quietUntil=elapsed+22;nextAmbientScare=Math.max(nextAmbientScare,quietUntil+12);
+  renderTraining();notify(skipped?'TRAINING SKIPPED · Find the fuses and stay quiet.':'FIELD TRAINING COMPLETE · Your practice decoy is restored. Find the fuses and stay quiet.',5000);
+}
+function updateTraining(dt=0,action=''){
+  if(!training.active)return;
+  const previousStep=training.step;
+  if(training.step===0&&Math.hypot(player.x-training.origin.x,player.z-training.origin.z)>=2)training.step=1;
+  else if(training.step===1){training.crouchTime=crouching?training.crouchTime+dt:0;if(training.crouchTime>=.7)training.step=2;}
+  else if(training.step===2&&action==='decoy')training.step=3;
+  else if(training.step===3&&action==='beam'){finishTraining();return;}
+  if(training.step!==previousStep)renderTraining();
+}
+function award(points){const earned=Math.round(points*(runRules.challenge==='scarcity'?1.25:1));score+=earned;return earned;}
 function formatTime(seconds){return `${Math.floor(seconds/60).toString().padStart(2,'0')}:${Math.floor(seconds%60).toString().padStart(2,'0')}`;}
 function setVolume(){audio.setVolume(settings.volume/100*.65);document.querySelectorAll('.sound-button').forEach(b=>{b.classList.toggle('muted',settings.volume===0);b.setAttribute('aria-label',settings.volume===0?'Unmute audio':'Mute audio');});}
 function setBrightness(){
@@ -110,7 +148,7 @@ try {
   const arm=part(new THREE.CylinderGeometry(.078,.105,.34,12),sleeveMat,.013,-.16,.18);arm.rotation.x=.8;
   stunView=createStunView(THREE,camera);
   player.copy(world.spawn);menuCamera.copy(world.introCameraPosition||world.spawn);
-  yaw=world.introYaw||0;enemyHome.copy(world.enemySpawn);
+  yaw=world.introYaw||0;enemyHome.copy(actors[0].home||sahur.group.position);
   showMenu();
   $('play-button').disabled=false;
   requestAnimationFrame(frame);
@@ -134,49 +172,140 @@ function showMenu(){
   $('danger-overlay').style.opacity=0;$('flash').style.opacity=0;
   camera.position.copy(menuCamera);camera.rotation.set(0,world.introYaw||0,0);
   positionMenuEnemy();sahur.group.visible=true;flashlight.visible=false;heldFlashlight.visible=false;fillLight.intensity=.5;
-  audio.pause();
+  $('field-training').hidden=true;$('audio-caption').hidden=true;clearTimeout(toastTimer);$('toast').classList.remove('show');audio.pause();
 }
 async function lockPointer(){
   if(coarse||mode!=='playing')return;
   try{const promise=$('game').requestPointerLock();if(promise)await promise;}catch{notify('Drag to look around. Click the scene to lock your mouse.',4500);}
 }
-async function startGame(requested){
+function baselineFor(index,fresh=false){
+  return {seed:fresh?Math.floor(Math.random()*4294967295):runSeed,levelIndex:index,score:fresh?0:score,totalElapsed:fresh?0:totalElapsed,
+    weaponOwned:fresh?false:weaponOwned,ammo:fresh?0:ammo,
+    difficulty:fresh?settings.difficulty:runRules.difficulty,challenge:fresh?settings.challenge:runRules.challenge};
+}
+function persistExpedition(suspended=null,baseline=stageCheckpoint){
+  if(!baseline)return false;
+  try{
+    const ok=writeExpedition(localStorage,{checkpoint:baseline,suspended});
+    if(ok)savedExpedition=readExpedition(localStorage);
+    return ok;
+  }catch{return false;}
+}
+const savedPoint=v=>v?{x:v.x,y:v.y??0,z:v.z}:null;
+function captureSuspension(){
+  return {archiveDecoded,elapsed,score,totalElapsed,player:savedPoint(player),yaw,pitch,stamina,battery,decoys,
+    collected:[...collected],usedSupplies:world.supplies.flatMap((item,i)=>item.mesh.visible?[]:[i]),
+    usedCases:world.armory.parts.filter(item=>!item.mesh.visible).map(item=>item.id),
+    weaponOwned,ammo,weaponParts:[...weaponParts],flashlightOn,beamMode,torchHeat,boostLocked,stunReady,weaponNoiseUntil,pingReady,
+    survey:{explored:[...explored],visited:[...survey.visited],trail:survey.trail.map(p=>({...p})),waypoint:survey.waypoint},
+    actors:actors.map(a=>({type:a.model.type,position:savedPoint(a.model.group.position),yaw:a.model.group.rotation.y,
+      alert:a.alert,lastKnown:savedPoint(a.lastKnown),goal:savedPoint(a.goal),path:[],pathTimer:0,
+      stunnedUntil:a.stunnedUntil,frozen:a.frozen,pursuit:a.pursuit,charge:a.charge})),
+    decoy:decoy?{position:savedPoint(decoy.position),until:decoy.until,id:decoy.id}:null,
+    scareCooldown,pendingScare,nextAmbientScare,visitedRooms:[...visitedRooms],scareRooms:[...scareRooms],scareSequence,lastRoomId,
+    onboarding:{active:training.active,step:training.step,complete:training.complete},researchDiscovered,lastDetection,
+    tension:{quietUntil,lastChaseAt,enemyGraceUntil}};
+}
+function restoreSuspension(snapshot){
+  const restoredIds=new Set(snapshot.collected.filter(id=>world.fuses.some(item=>item.id===id)));
+  world.setPower(restoredIds.size,restoredIds);
+  const validPosition=world.isWalkable(snapshot.player.x,snapshot.player.z,.27);
+  const validCast=snapshot.actors.length===actors.length&&actors.every(a=>snapshot.actors.some(saved=>saved.type===a.model.type&&world.isWalkable(saved.position.x,saved.position.z,.3)));
+  if(!validPosition||!validCast||snapshot.score<stageCheckpoint.score||snapshot.totalElapsed<stageCheckpoint.totalElapsed){world.setPower(0);return false;}
+  archiveDecoded=snapshot.archiveDecoded===true;elapsed=snapshot.elapsed;score=snapshot.score;totalElapsed=snapshot.totalElapsed;
+  player.set(snapshot.player.x,Math.max(1.05,Math.min(1.65,snapshot.player.y)),snapshot.player.z);yaw=snapshot.yaw;pitch=Math.max(-1.3,Math.min(1.3,snapshot.pitch));
+  stamina=snapshot.stamina;battery=snapshot.battery;decoys=snapshot.decoys;
+  collected.clear();restoredIds.forEach(id=>collected.add(id));fuseCount=collected.size;
+  world.fuses.forEach(item=>item.mesh.visible=!collected.has(item.id));
+  world.supplies.forEach((item,i)=>item.mesh.visible=!snapshot.usedSupplies.includes(i));
+  weaponParts.clear();snapshot.weaponParts.forEach(id=>weaponParts.add(id));
+  world.armory.parts.forEach(item=>item.mesh.visible=!snapshot.usedCases.includes(item.id));
+  weaponOwned=snapshot.weaponOwned;ammo=snapshot.ammo;stunReady=snapshot.stunReady;weaponNoiseUntil=snapshot.weaponNoiseUntil;pingReady=snapshot.pingReady;
+  flashlightOn=snapshot.flashlightOn;beamMode=snapshot.beamMode;torchHeat=snapshot.torchHeat;boostLocked=snapshot.boostLocked;
+  resetSurvey(survey);
+  const inBounds=key=>{const [x,z]=key.split(',').map(Number);return x<world.width&&z<world.height;};
+  snapshot.survey.explored.filter(inBounds).forEach(key=>explored.add(key));
+  snapshot.survey.visited.filter(inBounds).forEach(key=>survey.visited.add(key));
+  survey.trail=snapshot.survey.trail.filter(p=>world.isWalkable(p.x,p.z,0));
+  const waypoint=snapshot.survey.waypoint;
+  if(waypoint&&explored.has(surveyKey(waypoint.x,waypoint.z))&&world.grid[waypoint.z]?.[waypoint.x]===0)survey.waypoint=waypoint;
+  for(const a of actors){
+    const state=snapshot.actors.find(saved=>saved.type===a.model.type);
+    a.model.group.position.set(state.position.x,0,state.position.z);a.model.group.rotation.y=state.yaw;
+    a.stunnedUntil=state.stunnedUntil;a.alert=state.alert;
+    a.lastKnown=state.lastKnown?new THREE.Vector3(state.lastKnown.x,0,state.lastKnown.z):null;
+    a.goal=state.goal?new THREE.Vector3(state.goal.x,0,state.goal.z):null;
+    a.pursuit=state.pursuit||createPursuit();a.charge=state.charge||createBrriCharge();a.path=[];a.pathTimer=0;
+  }
+  if(snapshot.decoy&&snapshot.decoy.until>elapsed&&world.isWalkable(snapshot.decoy.position.x,snapshot.decoy.position.z,.1))placeDecoy(new THREE.Vector3(snapshot.decoy.position.x,.16,snapshot.decoy.position.z),snapshot.decoy.until,snapshot.decoy.id);
+  scareCooldown=snapshot.scareCooldown;pendingScare=snapshot.pendingScare;nextAmbientScare=snapshot.nextAmbientScare;
+  snapshot.visitedRooms.forEach(id=>visitedRooms.add(id));snapshot.scareRooms.forEach(id=>scareRooms.add(id));scareSequence=snapshot.scareSequence;lastRoomId=snapshot.lastRoomId;
+  researchDiscovered=snapshot.researchDiscovered||weaponOwned;lastDetection=snapshot.lastDetection||lastDetection;
+  quietUntil=snapshot.tension.quietUntil;lastChaseAt=snapshot.tension.lastChaseAt;enemyGraceUntil=snapshot.tension.enemyGraceUntil;
+  training={...training,...snapshot.onboarding,origin:player.clone(),crouchTime:0};
+  return true;
+}
+async function continueExpedition(){
+  try{savedExpedition=readExpedition(localStorage);}catch{savedExpedition=null;}
+  return savedExpedition?startGame(savedExpedition.checkpoint.levelIndex,{resume:savedExpedition}):startGame(checkpoint);
+}
+function saveAndQuit(){
+  if(mode!=='paused'||scare?.fatal)return false;
+  if(!persistExpedition(captureSuspension())){notify('Could not save on this device. Your expedition is still paused.',6000);$('pause-save-status').textContent='Save unavailable. Keep this tab open or resume your expedition.';return false;}
+  showMenu();return true;
+}
+async function startGame(requested,options={}){
   if(!world)return;
-  if(Number.isInteger(requested)&&requested>=0&&requested<LEVELS.length)selectedLevel=requested;
-  loadLevel(selectedLevel);
-  if(mode==='menu'||mode==='won'){scareDirector.reset();score=0;stageBaseScore=0;totalElapsed=0;}else if(mode==='dead'){score=stageBaseScore;}else if(mode==='cleared'){stageBaseScore=score;}
-  if(mode==='menu'||mode==='won'){weaponOwned=false;ammo=0;stageWeapon={owned:false,ammo:0};}else if(mode==='dead'){weaponOwned=stageWeapon.owned;ammo=stageWeapon.ammo;}else if(mode==='cleared'){stageWeapon={owned:weaponOwned,ammo};}
+  const index=Number.isInteger(requested)&&requested>=0&&requested<LEVELS.length?requested:selectedLevel;
+  const fresh=mode==='menu'||mode==='won';
+  const baseline=options.resume?.checkpoint||(mode==='dead'&&stageCheckpoint?stageCheckpoint:baselineFor(index,fresh));
+  runSeed=baseline.seed||0;archiveDecoded=false;puzzleTarget=null;loadLevel(baseline.levelIndex);
+  stageCheckpoint={...baseline};runRules={difficulty:baseline.difficulty,challenge:baseline.challenge};
+  score=baseline.score;stageBaseScore=score;totalElapsed=baseline.totalElapsed;
+  weaponOwned=baseline.weaponOwned;ammo=baseline.ammo;stageWeapon={owned:weaponOwned,ammo};
+  scareDirector.reset();
   beamMode='focus';torchHeat=0;boostLocked=false;cranking=false;torchCrankDone=false;touch.crank=false;batteryWarnings.clear();
   weaponParts.clear();stunReady=0;weaponNoiseUntil=0;stunView.hide();
-  decoys=settings.challenge==='scarcity'?1:3;decoy=null;pingReady=0;holdTarget=null;holdProgress=0;interactHeld=false;
+  decoys=runRules.challenge==='scarcity'?1:3;decoy=null;pingReady=0;holdTarget=null;holdProgress=0;interactHeld=false;
   $('stage-screen').hidden=true;
-  clearScare();scareCooldown=0;pendingScare=0;nextAmbientScare=24;scareRooms.clear();visitedRooms.clear();lastRoomId=null;scareSequence=0;
-  mode='playing';elapsed=0;stamina=100;battery=settings.challenge==='scarcity'?65:100;fuseCount=0;collected.clear();resetSurvey(survey);mapKeyboard=false;keys.clear();enemyPath=[];patrolGoal=null;lastKnown=null;pathTimer=0;alertUntil=0;stepTimer=0;exhausted=false;hadPointerLock=false;pitch=0;yaw=world.introYaw||0;flashlightOn=true;
-  difficulty={easy:.78,normal:1,hard:1.25}[settings.difficulty]||1;
+  clearScare();scareCooldown=0;pendingScare=0;nextAmbientScare=30+Math.random()*16;scareRooms.clear();visitedRooms.clear();lastRoomId=null;scareSequence=0;
+  quietUntil=12;lastChaseAt=-100;enemyGraceUntil=10/({easy:.78,normal:1,hard:1.25}[runRules.difficulty]);
+  mode='playing';elapsed=0;stamina=100;battery=runRules.challenge==='scarcity'?65:100;fuseCount=0;collected.clear();resetSurvey(survey);mapKeyboard=false;keys.clear();enemyPath=[];patrolGoal=null;lastKnown=null;pathTimer=0;alertUntil=0;stepTimer=0;exhausted=false;hadPointerLock=false;pitch=0;yaw=world.introYaw||0;flashlightOn=true;
+  moving=false;sprinting=false;crouching=false;touch.crouch=false;touch.x=0;touch.y=0;touch.sprint=false;$('touch-crouch').setAttribute('aria-pressed','false');
+  difficulty={easy:.78,normal:1,hard:1.25}[runRules.difficulty]||1;
   player.copy(world.spawn);sahur.group.position.copy(enemyHome);sahur.group.position.y=0;sahur.group.visible=true;
-  world.fuses.forEach(f=>f.mesh.visible=true);
-  world.setPower?.(0);heldFlashlight.visible=true;
-  $('objective-title').textContent=world.level.objective;$('objective-detail').textContent=world.level.brief;
+  world.fuses.forEach(f=>f.mesh.visible=true);world.setPower(0);heldFlashlight.visible=true;
+  researchDiscovered=weaponOwned;lastDetection={type:world.level.enemy,cause:'sight'};
+  let trained=false;try{trained=localStorage.getItem('sahur-field-training-v1')==='complete';}catch{}
+  training={active:levelIndex===0&&(options.training||(!trained&&fresh&&!options.resume)),step:0,complete:trained,origin:player.clone(),crouchTime:0};
+  const restored=options.resume?.suspended?restoreSuspension(options.resume.suspended):false;
+  $('objective-title').textContent=fuseCount===world.targetCount?'Get to the exit':world.level.objective;
+  $('objective-detail').textContent=fuseCount===world.targetCount?'Exit unlocked. Return to the green door.':world.level.brief;
   $('hud-level').textContent=`LEVEL ${world.level.code} / ${world.level.name.toUpperCase()}`;
   $('progress-total').textContent=` / ${world.targetCount} ${world.level.plural.toUpperCase()}`;
   $('fuse-slots').innerHTML='<b></b>'.repeat(world.targetCount);
   $('ability-tip').textContent=world.level.tip;
-  $('fuse-count').textContent='0';$('audio-caption').hidden=true;document.querySelectorAll('#fuse-slots b').forEach(b=>b.classList.remove('found'));
+  $('fuse-count').textContent=String(fuseCount);$('audio-caption').hidden=true;document.querySelectorAll('#fuse-slots b').forEach((b,i)=>b.classList.toggle('found',i<fuseCount));
   $('menu').hidden=true;$('hud').hidden=false;$('pause-screen').hidden=true;$('end-screen').hidden=true;
   document.body.classList.add('playing');$('danger-overlay').style.opacity=0;
-  camera.position.copy(player);camera.rotation.set(pitch,yaw,0);syncFlashlight();
+  camera.position.copy(player);camera.rotation.set(pitch,yaw,0);syncFlashlight();renderTraining();updateHUD(0);
   clearTimeout(toastTimer);$('toast').classList.remove('show');
-  lockPointer();
+  lastTime=performance.now();lockPointer();
   try{await audio.init();setVolume();audio.resume();}catch{}
-  markExplored();notify(`LEVEL ${world.level.code} — ${world.level.tip}`,6500);
+  markExplored();
+  if(!options.resume||!restored)persistExpedition();
+  notify(restored?'EXPEDITION RESUMED · Your progress and equipment are restored.':options.resume?.suspended?'Saved position unavailable. Your stage checkpoint and equipment are restored.':`LEVEL ${world.level.code} — ${world.level.tip}`,6500);
 }
 function pauseGame(){
   if(mode!=='playing')return;mode='paused';touch.crank=false;cranking=false;interactHeld=false;holdTarget=null;holdProgress=0;keys.clear();touch.x=0;touch.y=0;touch.sprint=false;
   if(document.pointerLockElement)document.exitPointerLock();
   $('pause-screen').hidden=false;$('interaction').hidden=true;audio.pause();
+  $('field-training').hidden=true;$('audio-caption').hidden=true;clearTimeout(toastTimer);$('toast').classList.remove('show');
+  $('save-quit-button').disabled=!!scare?.fatal;
+  $('pause-save-status').textContent=scare?.fatal?'Finish this encounter before saving.':'';
 }
 function resumeGame(){
-  if(mode!=='paused')return;mode='playing';$('pause-screen').hidden=true;lastTime=performance.now();audio.resume();lockPointer();
+  if(mode!=='paused')return;mode='playing';$('pause-screen').hidden=true;lastTime=performance.now();renderTraining();audio.resume();lockPointer();
 }
 function endGame(won){
   if(mode!=='playing')return;clearScare();mode=won?'won':'dead';keys.clear();touch.x=0;touch.y=0;
@@ -186,7 +315,9 @@ function endGame(won){
   $('end-title').textContent=won?'YOU MADE IT OUT.':'IT FOUND YOU.';
   $('end-description').textContent=won?'The door opens. The humming fades. For now, you are safe.':'The knocking stopped. You didn’t.';
   $('end-time').textContent=formatTime(totalElapsed);$('end-fuses').textContent=`${score} PTS`;
-  $('end-description').textContent=won?'The last signal recovered. You escaped the Red Archive.':'Checkpoint preserved. Try this level again, or change stages from the menu.';
+  $('end-description').textContent=won?'The Lobby lights burn steady. The pools fall still. The pipes go silent. Your recovered signal opens the Archive door—and this time, the dawn beyond it is real.':'Checkpoint preserved. Try this level again, or change stages from the menu.';
+  $('end-hint').hidden=won;$('end-hint').textContent=won?'':deathHint(lastDetection.type,lastDetection.cause);
+  if(won){try{clearExpedition(localStorage);}catch{}savedExpedition=null;}else persistExpedition();
   if(won){try{const best=Number(localStorage.getItem('sahur-best-score'))||0;localStorage.setItem('sahur-best-score',String(Math.max(best,score)));}catch{}}
   $('retry-button').firstElementChild.textContent=won?'PLAY AGAIN':'RETRY THIS LEVEL';
   if(won){audio.win();$('flash').style.opacity=settings.reducedEffects?.18:.5;setTimeout(()=>$('flash').style.opacity=0,250);}
@@ -198,17 +329,17 @@ function openModal(id){
   $(id).showModal();if(id==='map-dialog'){mapKeyboard=false;survey.cursor=world.cellAt(player.x,player.z);survey.notice='';drawMap();$('map-canvas').focus({preventScroll:true});}
 }
 function closeModal(){
-  if(!activeModal)return;const {id,wasPlaying}=activeModal;activeModal=null;$(id).close();if(wasPlaying)resumeGame();
+  if(!activeModal)return;const {id,wasPlaying}=activeModal;activeModal=null;if(id==='control-dialog')puzzleTarget=null;$(id).close();if(wasPlaying)resumeGame();
 }
 function updateSettingsUI(){
   $('volume-input').value=settings.volume;$('volume-output').textContent=`${settings.volume}%`;
   $('sensitivity-input').value=settings.sensitivity;$('sensitivity-output').textContent=`${settings.sensitivity}%`;
   $('brightness-input').value=settings.brightness;$('brightness-output').textContent=`${settings.brightness}%`;
-  $('touch-size-input').value=settings.touchSize;$('touch-size-output').textContent=`${settings.touchSize}%`;
   document.querySelectorAll('[data-difficulty]').forEach(b=>b.classList.toggle('selected',b.dataset.difficulty===settings.difficulty));
   document.querySelectorAll('[data-quality]').forEach(b=>b.classList.toggle('selected',b.dataset.quality===settings.quality));
   document.querySelectorAll('[data-challenge]').forEach(b=>b.classList.toggle('selected',b.dataset.challenge===settings.challenge));
   for(const [id,value] of [['scares-toggle',settings.scares],['motion-toggle',settings.motion],['effects-toggle',settings.reducedEffects],['captions-toggle',settings.captions],['handed-toggle',settings.leftHanded]]){$(id).classList.toggle('on',value);$(id).setAttribute('aria-checked',String(value));}
+  $('touch-size-input').value=settings.touchSize;$('touch-size-output').textContent=`${settings.touchSize}%`;
   document.body.classList.toggle('left-handed',settings.leftHanded);document.documentElement.style.setProperty('--touch-size',String(settings.touchSize/100));
   $('touch-look-hint').textContent=settings.leftHanded?'Drag the left side to look':'Drag the right side to look';
   if(!settings.captions){$('audio-caption').textContent='';$('audio-caption').hidden=true;}else $('audio-caption').hidden=!$('audio-caption').textContent;setVolume();
@@ -217,7 +348,11 @@ function updateSettingsUI(){
 $('play-button').addEventListener('click',()=>startGame(selectedLevel));$('retry-button').addEventListener('click',()=>startGame(mode==='won'?0:levelIndex));
 $('stage-continue').addEventListener('click',()=>startGame(levelIndex+1));
 $('stage-menu').addEventListener('click',showMenu);
-$('continue-button').addEventListener('click',()=>startGame(checkpoint));
+$('continue-button').addEventListener('click',continueExpedition);
+$('training-button').addEventListener('click',()=>startGame(0,{training:true}));
+$('training-skip').addEventListener('click',()=>finishTraining(true));
+$('save-quit-button').addEventListener('click',saveAndQuit);
+$('touch-crouch').addEventListener('click',()=>{if(mode!=='playing')return;touch.crouch=!touch.crouch;$('touch-crouch').setAttribute('aria-pressed',String(touch.crouch));});
 document.querySelectorAll('[data-level]').forEach(b=>b.addEventListener('click',()=>{if(mode!=='menu')return;selectedLevel=Number(b.dataset.level);loadLevel(selectedLevel);positionMenuEnemy();updateLevelCards();}));
 $('beam-button').addEventListener('click',cycleBeam);
 $('crank-button').addEventListener('pointerdown',e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);touch.crank=true;});
@@ -299,6 +434,7 @@ function cycleBeam(){
  if(mode!=='playing'||scare)return;let next=BEAM_MODES[(BEAM_MODES.indexOf(beamMode)+1)%BEAM_MODES.length];
  if(next==='boost'&&boostLocked){notify('BOOST cooling down. Let heat fall below 30%.');next='focus';}
  beamMode=next;syncFlashlight();audio.torchClick();notify(`${BEAMS[next].label} BEAM · ${BEAMS[next].range} m · ${Math.round(BEAMS[next].drain*60)}% battery/min`,2200);
+ updateTraining(0,'beam');
 }
 function updateTorch(dt){
  const wantsCrank=(keys.has('KeyV')||touch.crank)&&!moving;
@@ -321,32 +457,53 @@ function detectInteraction(){
   for(const f of [...world.armory.parts,world.armory.bench]){if(f.kind==='weaponpart'&&(!f.mesh.visible||weaponParts.has(f.id)))continue;toTarget.copy(f.position).sub(player);toTarget.y=0;const d=toTarget.length();if(d<best&&direction.dot(toTarget.normalize())>.05&&world.lineOfSight(player,f.position)){best=d;interaction={type:f.kind,item:f};}}
   const e=world.exit.position;toTarget.copy(e).sub(player);toTarget.y=0;const d=toTarget.length();if(d<3&&direction.dot(toTarget.normalize())>-.2)interaction={type:'exit'};
   $('interaction').hidden=!interaction;$('crosshair').classList.toggle('active',!!interaction);
+  if(interaction?.type==='weaponpart'&&!researchDiscovered){researchDiscovered=true;renderTraining();notify('RESEARCH DISCOVERED · Three components unlock an optional stun projector.',4500);}
   if(interaction&&['weaponpart','workbench'].includes(interaction.type)){$('interaction-label').textContent=interaction.type==='weaponpart'?`Hold E · unlock ${interaction.item.label}${holdTarget?` · ${Math.round(holdProgress/interaction.item.hold*100)}%`:''}`:weaponParts.size===3?`Hold E · ${weaponOwned?'recharge':'assemble'} stun projector${holdTarget?` · ${Math.round(holdProgress/STUN.assemblyWork*100)}%`:''}`:`Stun workbench · ${weaponParts.size} / 3 parts`;return;}
-  if(interaction)$('interaction-label').textContent=interaction.type==='supply'?'Take supplies · battery + decoy':interaction.type==='fuse'?`${world.level.hold?'Hold E · ':''}${world.level.action}${holdTarget?` · ${Math.round(holdProgress/world.level.hold*100)}%`:''}`:fuseCount===world.targetCount?(levelIndex===3?'Escape the archive':'Enter the next level'):`Exit requires ${world.targetCount-fuseCount} ${world.level.plural}`;
+  if(interaction)$('interaction-label').textContent=interaction.type==='supply'?'Take supplies · battery + decoy':interaction.type==='fuse'?`${world.level.hold?'Hold E · ':''}${world.level.action}${holdTarget?` · ${Math.round(holdProgress/world.level.hold*100)}%`:''}`:fuseCount===world.targetCount?(levelIndex===3?(archiveDecoded?'Hold E · transmit extraction signal':'Decode the exit signal'):'Enter the next level'):`Exit requires ${world.targetCount-fuseCount} ${world.level.plural}`;
 }
 function interact(){
   if(mode!=='playing'||scare)return;detectInteraction();if(!interaction)return;
-  if(interaction.type==='exit'){if(fuseCount===world.targetCount)finishLevel();else notify(`Exit locked. ${world.targetCount-fuseCount} ${world.level.plural} remaining.`);return;}
+  if(interaction.type==='exit'){if(fuseCount===world.targetCount){if(levelIndex===3&&!archiveDecoded)openControlPuzzle('archive');else if(levelIndex===3){holdTarget={kind:'extraction',mesh:world.exit.mesh,hold:8};holdProgress=0;interactHeld=true;notify('EXTRACTION SIGNAL · Hold E for 8 seconds. The archive can hear you.',5000);}else finishLevel();}else notify(`Exit locked. ${world.targetCount-fuseCount} ${world.level.plural} remaining.`);return;}
   if(interaction.type==='supply'){interaction.item.mesh.visible=false;battery=Math.min(100,battery+35);stamina=100;decoys=Math.min(5,decoys+1);const points=award(75);audio.collect();notify(`SUPPLIES · +35% battery · +1 decoy · +${points} points`);return;}
-  if(interaction.type==='workbench'){if(weaponParts.size<3){notify('Find the coil, capacitor and lens in remote research cases.');return;}if(weaponOwned&&ammo===STUN.charges){notify('Projector fully charged. Keep the spare components.');return;}}
+  if(interaction.type==='workbench'){researchDiscovered=true;renderTraining();if(weaponParts.size<3){notify('Find the coil, capacitor and lens in remote research cases.');return;}if(weaponOwned&&ammo===STUN.charges){notify('Projector fully charged. Keep the spare components.');return;}}
   if(interaction.item?.hold||world.level.hold){holdTarget=interaction.item;holdProgress=0;return;}
   completeObjective(interaction.item);
 }
 function completeObjective(f){
   if(collected.has(f.id))return;collected.add(f.id);f.mesh.visible=false;fuseCount++;const points=award(250);battery=Math.min(100,battery+24);audio.collect();
-  holdTarget=null;holdProgress=0;world.setPower(fuseCount);
-  if(fuseCount===2)pendingScare=elapsed+2.5;
+  holdTarget=null;holdProgress=0;world.setPower(fuseCount,collected);
+  if(fuseCount===2)pendingScare=elapsed+8+Math.random()*12;
   $('fuse-count').textContent=String(fuseCount);document.querySelectorAll('#fuse-slots b').forEach((b,i)=>b.classList.toggle('found',i<fuseCount));
-  if(fuseCount===world.targetCount){$('objective-title').textContent='Get to the exit';$('objective-detail').textContent=levelIndex===3?'Signal recovered. Escape the archive.':'Exit unlocked. Return to the green door.';notify('EXIT UNLOCKED · Return to the green door.',6000);}
-  else notify(`${world.level.item.toUpperCase()} ${fuseCount} / ${world.targetCount} · +${points} points`);
+  if(fuseCount===world.targetCount){pendingScare=0;quietUntil=Math.max(quietUntil,elapsed+12);$('objective-title').textContent='Get to the exit';$('objective-detail').textContent=levelIndex===3?'Signal recovered. Escape the archive.':'Exit unlocked. Return to the green door.';notify(`EXIT UNLOCKED · Return to the green door. ${world.objectiveState.notice}`,6000);}
+  else notify(`${world.level.item.toUpperCase()} ${fuseCount} / ${world.targetCount} · +${points} points · ${world.objectiveState.notice}`,5000);
+  if(levelIndex===3)notify(`TAPE ${f.id} · ENCODED SIGNAL ${10+Number(signalCode(runSeed)[f.id-1])} · ${fuseCount===world.targetCount?'All tapes recovered. Decode the exit signal.':'Find the remaining tapes.'}`,6500);
   interaction=null;$('interaction').hidden=true;
 }
 function updateWork(dt){
   if(!holdTarget)return;
-  if(!(keys.has('KeyE')||interactHeld)||interaction?.item!==holdTarget||moving){holdTarget=null;holdProgress=0;return;}
-  holdProgress+=dt;holdTarget.mesh.rotation.y+=dt*1.8;
-  if(holdProgress>=(holdTarget.hold||world.level.hold)){const item=holdTarget;holdTarget=null;holdProgress=0;if(item.kind==='weaponpart'){weaponParts.add(item.id);item.mesh.visible=false;award(100);audio.collect();notify(`${item.label} RECOVERED · ${weaponParts.size}/3 parts`);}else if(item.kind==='workbench'){weaponOwned=true;ammo=STUN.charges;weaponParts.clear();audio.collect();notify('STUN PROJECTOR READY · 3 charges · aim and press SPACE / click',5000);}else completeObjective(item);}
+  if(!(keys.has('KeyE')||interactHeld)||(holdTarget.kind==='extraction'?interaction?.type!=='exit':interaction?.item!==holdTarget)||moving){holdTarget=null;holdProgress=0;return;}
+  holdProgress+=dt;if(holdTarget.kind!=='extraction')holdTarget.mesh.rotation.y+=dt*1.8;
+  if(holdTarget.kind==='extraction'){$('interaction-label').textContent=`HOLD E · EXTRACTING ${Math.round(holdProgress/8*100)}%`;weaponNoiseUntil=elapsed+1;}
+  if(holdProgress>=(holdTarget.hold||world.level.hold)){const item=holdTarget;holdTarget=null;holdProgress=0;if(item.kind==='weaponpart'){weaponParts.add(item.id);item.mesh.visible=false;award(100);audio.collect();notify(`${item.label} RECOVERED · ${weaponParts.size}/3 parts`);}else if(item.kind==='workbench'){weaponOwned=true;ammo=STUN.charges;weaponParts.clear();audio.collect();notify('STUN PROJECTOR READY · 3 charges · aim and press SPACE / click',5000);}else if(item.kind==='extraction')finishLevel();else openControlPuzzle(world.level.kind,item);}
 }
+
+function openControlPuzzle(kind,item=null){
+  puzzleTarget={kind,item};$('control-result').textContent='';
+  const archive=kind==='archive',rule=archive?null:controlPuzzle(kind,item.id,runSeed);
+  $('control-title').textContent=archive?'DECODE THE EXIT SIGNAL':rule.title;
+  $('control-detail').textContent=archive?`Each tape has a signal offset of +10. Subtract 10 from each value, then enter the digits in tape-number order: ${signalCode(runSeed).split('').map((n,i)=>`Tape 0${i+1}: ${10+Number(n)}`).join(' · ')}`:rule.detail;
+  $('machine-controls').hidden=archive;$('signal-controls').hidden=!archive;
+  $('control-a').value='0';$('control-b').value='0';$('signal-input').value='';updateControlReadout();
+  openModal('control-dialog');
+}
+function updateControlReadout(){const a=Number($('control-a').value),b=Number($('control-b').value);$('control-readout').textContent=puzzleTarget?.kind==='pool'?`Branch A: ${a} · Branch B: ${b}`:`Inlet: ${a} bar · Outlet: ${b} bar · Total: ${a+b} · Difference: ${Math.abs(a-b)}`;}
+for(const id of ['control-a','control-b'])$(id).addEventListener('input',updateControlReadout);
+$('control-submit').addEventListener('click',()=>{
+  if(!puzzleTarget)return;const {kind,item}=puzzleTarget,rule=kind==='archive'?null:controlPuzzle(kind,item.id,runSeed);
+  const valid=kind==='archive'?$('signal-input').value.trim()===signalCode(runSeed):Number($('control-a').value)===rule.a&&Number($('control-b').value)===rule.b;
+  if(!valid){$('control-result').textContent=kind==='archive'?'Signal mismatch. Check tape-number order.':'Control mismatch. Check the service label and adjust both controls.';return;}
+  puzzleTarget=null;closeModal();if(kind==='archive'){archiveDecoded=true;notify('SIGNAL ACCEPTED · Hold E at the exit for 8 seconds to transmit and escape.',6000);}else completeObjective(item);
+});
 
 function selectMapWaypoint(cell){
   const result=selectSurveyWaypoint(world,survey,player,cell);
@@ -371,7 +528,7 @@ function pickPatrol(){
   const cells=[];for(let z=1;z<world.height-1;z++)for(let x=1;x<world.width-1;x++)if(world.grid[z][x]===0)cells.push({x,z});
   const choice=cells[Math.floor(Math.random()*cells.length)];return choice?world.cellCenter(choice.x,choice.z):enemyHome.clone();
 }
-function makeActor(model,home){return {model,stunnedUntil:0,home:home.clone(),path:[],goal:null,lastKnown:null,alert:0,pathTimer:0,frozen:false};}
+function makeActor(model,home){return {model,stunnedUntil:0,home:home.clone(),path:[],goal:null,lastKnown:null,alert:0,pathTimer:0,frozen:false,pursuit:createPursuit(),charge:createBrriCharge(),searchTargets:[],searchOrigin:null,chasing:false};}
 function useScareModel(model){
   if(scareFace)camera.remove(scareFace);scareFace=model.group.clone(true);scareFace.visible=false;scareFace.userData.faceHeight=model.faceHeight;scareFace.userData.type=model.type;const aura=scareFace.getObjectByName('STUN_AURA');if(aura)aura.visible=false;camera.add(scareFace);
 }
@@ -379,14 +536,16 @@ function loadLevel(index){
   resetSurvey(survey);mapKeyboard=false;
   clearScare();stunView?.hide();if(decoy){scene.remove(decoy.mesh);decoy.mesh.geometry.dispose();decoy.mesh.material.dispose();decoy=null;}
   if(world)world.dispose();Object.values(enemyModels).forEach(m=>{m.stunAura.visible=false;scene.remove(m.group);});
-  levelIndex=index;selectedLevel=index;world=createWorld(THREE,scene,index);
-  sahur=enemyModels[world.level.enemy];actors=world.level.enemies.map((type,i)=>{const model=enemyModels[type],home=i===1?world.cellCenter(3,6):i===2?world.cellCenter(19,17):world.enemySpawn;model.group.position.copy(home);model.group.visible=true;scene.add(model.group);return makeActor(model,home);});
-  useScareModel(sahur);nearestActor=actors[0];enemyHome.copy(world.enemySpawn);player.copy(world.spawn);menuCamera.copy(world.introCameraPosition);yaw=0;pitch=0;
+  levelIndex=index;selectedLevel=index;world=createWorld(THREE,scene,index,runSeed);
+  sahur=enemyModels[world.level.enemy];actors=world.level.enemies.map((type,i)=>{const model=enemyModels[type],home=world.enemyHomes?.[i]||(i===1?world.cellCenter(3,6):i===2?world.cellCenter(19,17):world.enemySpawn);model.group.position.copy(home);model.group.rotation.x=0;model.group.rotation.y=0;model.group.visible=true;scene.add(model.group);return makeActor(model,home);});
+  useScareModel(sahur);nearestActor=actors[0];enemyHome.copy(actors[0].home||sahur.group.position);player.copy(world.spawn);menuCamera.copy(world.introCameraPosition);yaw=0;pitch=0;
   document.documentElement.style.setProperty('--accent',world.level.color);
 }
 function updateLevelCards(){
   document.querySelectorAll('[data-level]').forEach(b=>{const i=Number(b.dataset.level);b.classList.toggle('selected',i===selectedLevel);b.setAttribute('aria-pressed',String(i===selectedLevel));});
-  $('continue-button').hidden=checkpoint===0;$('continue-button').textContent=`CONTINUE · ${LEVELS[checkpoint].name.toUpperCase()}`;
+  const resumeLevel=savedExpedition?.checkpoint.levelIndex??checkpoint;
+  $('continue-button').hidden=!savedExpedition&&checkpoint===0;$('continue-button').textContent=`${savedExpedition?.suspended?'RESUME':'CONTINUE'} · ${LEVELS[resumeLevel].name.toUpperCase()}`;
+  $('play-label').textContent=savedExpedition?'START NEW EXPEDITION':'ENTER THE BACKROOMS';
   $('selected-level-code').textContent=LEVELS[selectedLevel].code;$('selected-level-name').textContent=LEVELS[selectedLevel].name;
   let best=0;try{best=Number(localStorage.getItem('sahur-best-score'))||0;}catch{}$('best-score').textContent=best?`BEST EXPEDITION / ${best} PTS`:'NO RECORDED ESCAPES';$('selected-level-brief').textContent=LEVELS[selectedLevel].brief;
   $('entity-name-menu').textContent=enemyModels[LEVELS[selectedLevel].enemy]?.name||'Tung Tung Tung Sahur';
@@ -397,6 +556,8 @@ function finishLevel(){
   clearScare();mode='cleared';keys.clear();touch.x=0;touch.y=0;touch.sprint=false;interactHeld=false;hadPointerLock=false;
   if(document.pointerLockElement)document.exitPointerLock();
   checkpoint=Math.max(checkpoint,levelIndex+1);try{localStorage.setItem('sahur-checkpoint',String(checkpoint));}catch{}
+  const checkpointSaved=persistExpedition(null,baselineFor(levelIndex+1));
+  document.querySelector('#stage-screen .eyebrow').textContent=checkpointSaved?'CHECKPOINT SAVED':'LEVEL CLEARED · KEEP THIS TAB OPEN';
   $('hud').hidden=true;$('stage-screen').hidden=false;$('stage-title').textContent=`${world.level.name.toUpperCase()} CLEARED`;
   $('stage-score').textContent=`${score} PTS · ${formatTime(totalElapsed)} TOTAL`;
   const next=LEVELS[levelIndex+1];$('stage-next').textContent=`NEXT / LEVEL ${next.code} — ${next.name}`;$('stage-brief').textContent=next.brief;$('stage-tip').textContent=next.tip;
@@ -404,10 +565,13 @@ function finishLevel(){
 }
 function throwDecoy(){
   if(mode!=='playing'||scare)return;if(decoys<=0){notify('No decoys left. Look for supply boxes.');return;}
-  if(decoy){scene.remove(decoy.mesh);decoy.mesh.geometry.dispose();decoy.mesh.material.dispose();}
   const target=player.clone();target.y=.16;const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
   for(let d=.4;d<9;d+=.4){const next=player.clone().addScaledVector(forward,d);if(!world.isWalkable(next.x,next.z,.2))break;target.x=next.x;target.z=next.z;}
-  const mesh=new THREE.Mesh(new THREE.SphereGeometry(.09,10,8),new THREE.MeshBasicMaterial({color:0xffba6e}));mesh.position.copy(target);scene.add(mesh);decoy={position:target,until:elapsed+9,mesh};decoys--;audio.knock();notify('DECOY THROWN · Sound hunters investigate for 9 seconds.');
+  placeDecoy(target,elapsed+9,`lure:${elapsed}`);decoys--;audio.knock();notify('DECOY THROWN · Sound hunters investigate the noise.');updateTraining(0,'decoy');
+}
+function placeDecoy(position,until,id){
+  if(decoy){scene.remove(decoy.mesh);decoy.mesh.geometry.dispose();decoy.mesh.material.dispose();}
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(.09,10,8),new THREE.MeshBasicMaterial({color:0xffba6e}));mesh.position.copy(position);scene.add(mesh);decoy={position,until,id,mesh};
 }
 function pingObjective(){
   if(mode!=='playing'||scare)return;if(elapsed<pingReady){notify(`Scanner recharging · ${Math.ceil(pingReady-elapsed)} s`);return;}pingReady=elapsed+12;
@@ -423,35 +587,87 @@ function fireStun(){
   if(elapsed<stunReady){notify(`Projector cooling down · ${Math.ceil(stunReady-elapsed)} s`);return;}
   const hit=selectStunTarget(THREE,actors,camera,world);ammo--;stunReady=elapsed+STUN.cooldown;weaponNoiseUntil=elapsed+2;
   stunView.fire(elapsed,hit?.distance||STUN.range);audio.stunPulse();
-  if(hit){hit.actor.stunnedUntil=elapsed+STUN.duration;hit.actor.alert=0;hit.actor.path=[];hit.actor.pathTimer=0;notify(`${hit.actor.model.name.toUpperCase()} STUNNED · ${STUN.duration} s`,2500);}
+  if(hit){hit.actor.stunnedUntil=elapsed+STUN.duration;hit.actor.alert=0;hit.actor.path=[];hit.actor.pathTimer=0;hit.actor.pursuit=createPursuit(elapsed);hit.actor.charge=createBrriCharge(elapsed);notify(`${hit.actor.model.name.toUpperCase()} STUNNED · ${STUN.duration} s`,2500);}
   else notify('PULSE MISSED · one charge spent',1800);
+}
+function searchCorners(actor){
+  const origin=actor.pursuit.lastKnown;if(!origin)return [];
+  const cell=world.cellAt(origin.x,origin.z),key=surveyKey(cell.x,cell.z);
+  if(actor.searchOrigin===key)return actor.searchTargets;
+  actor.searchOrigin=key;actor.searchTargets=[];
+  for(const [dx,dz] of [[-1,0],[0,-1],[1,0],[0,1],[-2,0],[0,-2],[2,0],[0,2]]){
+    const x=cell.x+dx,z=cell.z+dz;if(world.grid[z]?.[x]!==0)continue;
+    const point=world.cellCenter(x,z);
+    if(world.isWalkable(point.x,point.z,.3)&&world.findPath(actor.model.group.position,point).length)actor.searchTargets.push({x:point.x,z:point.z});
+    if(actor.searchTargets.length===4)break;
+  }
+  return actor.searchTargets;
 }
 function updateEnemy(dt){
   distanceToEnemy=100;alertUntil=0;nearestActor=null;
   if(decoy&&elapsed>=decoy.until){scene.remove(decoy.mesh);decoy.mesh.geometry.dispose();decoy.mesh.material.dispose();decoy=null;}
   camera.updateMatrixWorld(true);const beamOrigin=new THREE.Vector3(),beamDirection=new THREE.Vector3();flashlight.getWorldPosition(beamOrigin);flashlight.target.getWorldPosition(beamDirection);beamDirection.sub(beamOrigin).normalize();
   for(const a of actors){
-    const model=a.model,pos=model.group.position,d=Math.hypot(pos.x-player.x,pos.z-player.z);
-    model.stunAura.visible=a.stunnedUntil>elapsed;if(model.stunAura.visible){model.stunAura.rotation.y=elapsed*1.8;continue;}
+    const model=a.model,pos=model.group.position;let d=Math.hypot(pos.x-player.x,pos.z-player.z);
+    model.stunAura.visible=a.stunnedUntil>elapsed;
+    if(model.stunAura.visible){model.stunAura.rotation.y=elapsed*1.8;a.pursuit=createPursuit(elapsed);a.charge=createBrriCharge(elapsed);a.chasing=false;a.alert=0;model.group.rotation.x=0;continue;}
     if(d<distanceToEnemy){distanceToEnemy=d;nearestActor=a;}
-    if(elapsed<10/difficulty){model.animate(elapsedWorld,0,false);continue;}
+    if(training.active||elapsed<enemyGraceUntil){model.animate(elapsedWorld,0,false);continue;}
     const los=d<30&&world.lineOfSight(pos,player);
+    audio.setSpatial(soundBearing(player,pos,yaw,!los),model.type);
     const observedDirection=new THREE.Vector3(pos.x-player.x,model.faceHeight-player.y,pos.z-player.z).normalize(),view=new THREE.Vector3(-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch));
     const observed=view.dot(observedDirection)>.8;
-    const roomHeight=world.roomAt(pos.x,pos.z)?.height||3.35;const target=new THREE.Vector3(pos.x,Math.min(model.faceHeight,roomHeight-.15),pos.z);
+    const roomHeight=world.roomAt(pos.x,pos.z)?.height||3.35,target=new THREE.Vector3(pos.x,Math.min(model.faceHeight,roomHeight-.15),pos.z);
     const illumination=beamStrength({origin:beamOrigin,direction:beamDirection,target,on:flashlight.visible,range:flashlight.distance,angle:flashlight.angle,power:battery<20?.6+.4*battery/20:1,blocked:!los});
-    const senses=senseEnemy(model.type,{distance:d,los,moving,sprinting,crouching,flashlight:flashlight.visible,observed,illuminated:illumination>.12,signature:BEAMS[beamMode].signature,working:!!holdTarget||cranking||weaponNoiseUntil>elapsed,difficulty,time:elapsed});a.frozen=senses.frozen;
-    const distracted=decoy&&['sahur','hound','bribri','ballerina'].includes(model.type)&&pos.distanceTo(decoy.position)<34;
-    if(distracted){a.lastKnown=decoy.position.clone();a.alert=elapsed+2;}
-    else if(senses.detect){if(a.alert<elapsed)audio.entityCue(model.type);a.alert=elapsed+(model.type==='smiler'?2.5:7);a.lastKnown=player.clone();if(model.type==='spioniro'){for(const other of actors){if(other!==a&&other.stunnedUntil<=elapsed&&other.model.group.position.distanceTo(pos)<24){other.lastKnown=player.clone();other.alert=elapsed+5;}}}}
-    const chasing=a.alert>elapsed&&!distracted;
-    if(chasing)alertUntil=Math.max(alertUntil,a.alert);
-    a.pathTimer-=dt;
-    if(a.pathTimer<=0){a.pathTimer=a.alert>elapsed?.45:2;const target=a.alert>elapsed&&a.lastKnown?a.lastKnown:(a.goal&&pos.distanceTo(a.goal)>1?a.goal:(a.goal=pickPatrol()));a.path=world.findPath(pos,target);}
+    const vision=los&&inVisionCone(pos,player,model.group.rotation.y,a.pursuit.phase==='pursue');
+    const senses=senseEnemy(model.type,{distance:d,los,vision,moving,sprinting,crouching,flashlight:flashlight.visible,observed,illuminated:illumination>.12,signature:BEAMS[beamMode].signature,working:!!holdTarget||cranking||weaponNoiseUntil>elapsed,difficulty,time:elapsed});a.frozen=senses.frozen;
+    a.pursuit=updatePursuit(a.pursuit,{type:model.type,time:elapsed,position:pos,player,senses,decoy,searchTargets:a.pursuit.phase==='search'?searchCorners(a):[]});
+    a.alert=a.pursuit.alertUntil;a.lastKnown=a.pursuit.lastKnown?new THREE.Vector3(a.pursuit.lastKnown.x,0,a.pursuit.lastKnown.z):null;
+    if(a.pursuit.event){a.pathTimer=0;if(model.type!=='bribri'&&(a.pursuit.event==='pursue'||a.pursuit.event==='investigate'))audio.entityCue(model.type);}
+    if(model.type==='spioniro'&&senses.detect&&elapsed>=(a.nextBroadcast||0)){
+      a.nextBroadcast=elapsed+3;
+      for(const other of actors){
+        if(other===a||other.stunnedUntil>elapsed||other.model.group.position.distanceTo(pos)>=24||other.pursuit.phase==='pursue'||other.pursuit.decoyId)continue;
+        other.pursuit={...createPursuit(elapsed),phase:'investigate',target:{x:player.x,z:player.z},lastKnown:{x:player.x,z:player.z},cause:'sound',alertUntil:elapsed+5};other.pathTimer=0;
+      }
+    }
+    a.chasing=a.pursuit.phase==='pursue'||a.pursuit.phase==='investigate'&&!a.pursuit.decoyId;
+    if(a.chasing){alertUntil=Math.max(alertUntil,a.alert);lastChaseAt=elapsed;quietUntil=Math.max(quietUntil,elapsed+20);}
+    if(model.type==='bribri'){
+      a.charge=updateBrriCharge(a.charge,{time:elapsed,position:pos,target:a.pursuit.target,detected:a.chasing&&senses.detect&&d<13});
+      if(a.charge.event==='windup'){audio.chargeWarning();notify('BRRI PLANTS ITS FEET · Sidestep the charge!',2200);}
+      model.group.rotation.x=a.charge.phase==='windup'?-.16:a.charge.phase==='recovery'?.1:0;
+    }
     let speed=0;
-    if(a.path.length&&!senses.frozen){const target=a.path[0],v=target.clone().sub(pos);v.y=0;const dist=v.length();if(dist<.16)a.path.shift();else{v.divideScalar(dist);speed=(a.alert>elapsed?senses.speed:1.2)*difficulty;const step=Math.min(speed*dt,dist);const nx=pos.x+v.x*step,nz=pos.z+v.z*step;if(world.isWalkable(nx,nz,.3)){pos.x=nx;pos.z=nz;}else{a.path=[];a.pathTimer=0;}const targetYaw=Math.atan2(v.x,v.z);model.group.rotation.y+=Math.atan2(Math.sin(targetYaw-model.group.rotation.y),Math.cos(targetYaw-model.group.rotation.y))*Math.min(1,dt*9);}}
-    model.animate(elapsedWorld,speed?speed/3:0,chasing);
-    if(!senses.frozen&&d<.9&&los){lastAttacker=model.name;useScareModel(model);triggerScare(true);return;}
+    if(model.type==='bribri'&&a.charge.phase==='charge'){
+      const heading=a.charge.direction,step=senses.speed*difficulty*dt*a.charge.speedMultiplier;
+      const nx=pos.x+heading.x*step,nz=pos.z+heading.z*step;
+      if(world.isWalkable(nx,nz,.3)){pos.x=nx;pos.z=nz;speed=step/dt;model.group.rotation.y=Math.atan2(heading.x,heading.z);}
+      else{a.charge=updateBrriCharge(a.charge,{time:elapsed,position:pos,blocked:true});a.pathTimer=0;}
+    }else{
+      a.pathTimer-=dt;
+      if(a.pathTimer<=0){
+        a.pathTimer=a.pursuit.phase==='patrol'?2:.45;
+        const destination=a.pursuit.target?new THREE.Vector3(a.pursuit.target.x,0,a.pursuit.target.z):a.goal&&pos.distanceTo(a.goal)>1?a.goal:(a.goal=pickPatrol());
+        a.path=world.findPath(pos,destination);
+      }
+      if(a.path.length&&!senses.frozen){
+        const next=a.path[0],v=next.clone().sub(pos);v.y=0;const distance=v.length();
+        if(distance<.16)a.path.shift();else{
+          v.divideScalar(distance);speed=(a.pursuit.phase==='patrol'?1.2:a.pursuit.phase==='search'?1.5:senses.speed)*difficulty;
+          if(model.type==='bribri')speed*=a.charge.speedMultiplier;
+          const step=Math.min(speed*dt,distance),nx=pos.x+v.x*step,nz=pos.z+v.z*step;
+          if(world.isWalkable(nx,nz,.3)){pos.x=nx;pos.z=nz;}else{a.path=[];a.pathTimer=0;}
+          const targetYaw=Math.atan2(v.x,v.z);model.group.rotation.y+=Math.atan2(Math.sin(targetYaw-model.group.rotation.y),Math.cos(targetYaw-model.group.rotation.y))*Math.min(1,dt*9);
+        }
+      }
+    }
+    model.animate(elapsedWorld,speed?speed/3:0,a.chasing);
+    d=Math.hypot(pos.x-player.x,pos.z-player.z);
+    const canAttack=model.type!=='bribri'||a.charge.canAttack;
+    if(!senses.frozen&&canAttack&&d<.9&&world.lineOfSight(pos,player)){
+      lastAttacker=model.name;lastDetection={type:model.type,cause:a.pursuit.cause||senses.cause||'proximity'};useScareModel(model);triggerScare(true);return;
+    }
   }
 }
 function clearScare(){
@@ -472,6 +688,7 @@ function applyScarePose(p){
 }
 function triggerScare(fatal=false,variant){
   if(mode!=='playing'||scare||(!fatal&&elapsed<scareCooldown))return false;
+  if(!fatal&&!safeScareMoment())return false;
   if(!settings.scares){if(fatal)endGame(false);return false;}
   if(!fatal)useScareModel(actors[Math.floor(Math.random()*actors.length)]?.model||sahur);
   const type=scareFace.userData.type||world.level.enemy;
@@ -486,13 +703,17 @@ function updateScare(dt){
   if(!scare)return;scare.time+=dt;const p=scarePose(scare,scare.time,settings.motion);
   applyScarePose(p);
   if(!scare.hitSound&&scare.time>=p.impact){scare.hitSound=true;audio.jumpscare(scare.fatal,scare.type,scare.variant,scare.side);}
-  if(p.done){const fatal=scare.fatal,variant=scare.variant;clearScare();heldFlashlight.visible=true;if(fatal)endGame(false);else if(variant==='door-slam')notify('The doorway is gone.',1800);else if(variant==='signal')notify('Recording restored.',1800);else if(variant==='steam-burst')notify('Pressure stabilised.',1800);}
+  if(p.done){const fatal=scare.fatal,variant=scare.variant;clearScare();heldFlashlight.visible=true;quietUntil=Math.max(quietUntil,elapsed+14);if(fatal)endGame(false);else if(variant==='door-slam')notify('The doorway is gone.',1800);else if(variant==='signal')notify('Recording restored.',1800);else if(variant==='steam-burst')notify('Pressure stabilised.',1800);}
+}
+function safeScareMoment(){
+  return !training.active&&elapsed>=quietUntil&&elapsed>=enemyGraceUntil&&alertUntil<=elapsed&&distanceToEnemy>=10&&battery>=10&&!holdTarget&&!cranking;
 }
 function updateHaunting(){
+  if(!safeScareMoment())return;
   const zone=world.roomAt(player.x,player.z),cell=world.cellAt(player.x,player.z),room=zone?.id||`hall-${Math.floor(cell.z/4)}`;
   if(pendingScare&&elapsed>=pendingScare&&elapsed>=scareCooldown){pendingScare=0;triggerScare(false,scareDirector.draw(levelIndex,zone?.design,'objective',settings.volume>0));return;}
   if(elapsed>=nextAmbientScare&&elapsed>=scareCooldown&&moving&&!scareRooms.has(room)&&scareRooms.size<3){
-    scareRooms.add(room);nextAmbientScare=elapsed+42+Math.random()*18;triggerScare(false);
+    scareRooms.add(room);nextAmbientScare=elapsed+48+Math.random()*24;triggerScare(false);
   }
 }
 function updateRoomLocation(){
@@ -504,7 +725,7 @@ function updatePlayer(dt){
   let forward=(keys.has('KeyW')||keys.has('ArrowUp')?1:0)-(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-touch.y;
   let side=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)+touch.x;
   const length=Math.hypot(forward,side);if(length>1){forward/=length;side/=length;}
-  moving=length>.1;crouching=keys.has('KeyC');
+  moving=length>.1;crouching=keys.has('KeyC')||touch.crouch;
   if(stamina<=.1)exhausted=true;if(stamina>24)exhausted=false;
   sprinting=moving&&!crouching&&!exhausted&&(keys.has('ShiftLeft')||keys.has('ShiftRight')||touch.sprint);
   const speed=crouching?1.55:sprinting?5.4:3.1;
@@ -522,20 +743,25 @@ function updatePlayer(dt){
   heldFlashlight.rotation.x=-.05+(sprinting?.13:0);
   updateTorch(dt);
   if(moving){stepTimer-=dt;if(stepTimer<=0){if(!crouching)audio.step(sprinting);stepTimer=sprinting?.3:crouching?.7:.48;}}else stepTimer=.1;
-  markExplored();detectInteraction();updateWork(dt);updateRoomLocation();
+  markExplored();detectInteraction();updateWork(dt);updateRoomLocation();updateTraining(dt);
 }
 function updateHUD(dt){
   $('run-time').textContent=formatTime(elapsed);$('stamina-fill').style.width=`${stamina}%`;$('stamina-fill').style.background=stamina<25?'#e8a675':'var(--accent)';$('stamina-label').textContent=stamina<=.1?'EXHAUSTED':stamina<25?'LOW STAMINA':'STAMINA';$('stamina-meter').setAttribute('aria-valuenow',String(Math.round(stamina)));$('battery-fill').style.width=`${battery}%`;$('battery-value').textContent=`${Math.ceil(battery)}%`;$('battery-meter-row').setAttribute('aria-valuenow',String(Math.round(battery)));
-  const chasing=elapsed>12/difficulty&&alertUntil>elapsed,close=distanceToEnemy<13;
+  const chasing=!training.active&&elapsed>=enemyGraceUntil&&alertUntil>elapsed,close=distanceToEnemy<13;
   document.querySelector('.entity-meter').classList.toggle('threat',chasing&&close);
-  $('entity-status').textContent=nearestActor?.frozen?'WATCHER HELD IN SIGHT':chasing?`${nearestActor?.model.name.toUpperCase()} / ALERT`:nearestActor?.model.name.toUpperCase()||'LISTEN';
-  $('entity-detail').textContent=nearestActor?.frozen?'Keep your flashlight pointed at it.':world.level.tip;
+  const threat=actors.filter(a=>a.chasing).sort((a,b)=>a.model.group.position.distanceTo(player)-b.model.group.position.distanceTo(player))[0]||nearestActor;
+  $('entity-status').textContent=training.active?'FIELD TRAINING · SAFE TO PRACTICE':threat?.charge.phase==='windup'?'BRRI IS WINDING UP':chasing?`${threat?.model.name.toUpperCase()} / ALERT`:nearestActor?.frozen?'WATCHER HELD IN SIGHT':threat?.pursuit.phase==='search'?`${threat.model.name.toUpperCase()} / SEARCHING`:threat?.model.name.toUpperCase()||'LISTEN';
+  $('entity-detail').textContent=nearestActor?.frozen&&!chasing?'Keep your flashlight pointed at it.':world.level.tip;
+  document.querySelector('.heat-row').hidden=beamMode!=='boost'&&torchHeat<1&&!boostLocked;
+  $('crank-button').hidden=battery>25&&!cranking;
+  $('hud-hint').hidden=elapsed>45&&!training.active;
+  $('weapon-quest').hidden=!researchDiscovered||training.active||(weaponOwned&&ammo>0&&weaponParts.size===0);
   $('beam-mode').textContent=BEAMS[beamMode].label;$('heat-fill').style.width=`${torchHeat}%`;$('heat-value').textContent=`${Math.round(torchHeat)}%`;$('torch-status').textContent=cranking?'CRANKING · NOISY':!flashlightOn?'OFF':boostLocked?'BOOST COOLING':battery<20?'LOW VOLTAGE':`${BEAMS[beamMode].range} m BEAM`;
   $('stun-status').textContent=!weaponOwned?'LOCKED':ammo<=0?'EMPTY':elapsed<stunReady?`${Math.ceil(stunReady-elapsed)}s`:String(ammo);
   $('weapon-quest').textContent=weaponOwned?`STUN PROJECTOR · ${ammo}/3 CHARGES · ${weaponParts.size}/3 SPARE PARTS`:`RARE WEAPON · ${weaponParts.size}/3 PARTS · COIL / CAPACITOR / LENS → WORKBENCH`;
   $('decoy-count').textContent=String(decoys);$('score-value').textContent=String(score);$('ping-status').textContent=elapsed<pingReady?`${Math.ceil(pingReady-elapsed)}s`:'READY';
   $('danger-overlay').style.opacity=chasing?Math.max(0,1-distanceToEnemy/15)*.7:0;
-  audio.update({distance:elapsed<12/difficulty?50:distanceToEnemy,moving,sprinting,chasing,enemyType:nearestActor?.model.type||world.level.enemy,level:levelIndex,dt});
+  audio.update({distance:training.active||elapsed<enemyGraceUntil?50:distanceToEnemy,moving,sprinting,chasing,enemyType:threat?.model.type||world.level.enemy,level:levelIndex,dt});
 }
 function frame(now){
   const dt=Math.min(.05,Math.max(.001,(now-lastTime)/1000));lastTime=now;elapsedWorld+=dt;
@@ -566,4 +792,4 @@ $('game').addEventListener('pointerdown',e=>{if(!coarse||mode!=='playing')return
 $('game').addEventListener('pointermove',e=>{if(e.pointerId!==touch.lookId||mode!=='playing')return;touchLook(e.clientX-touch.lastX,e.clientY-touch.lastY);touch.lastX=e.clientX;touch.lastY=e.clientY;});
 $('game').addEventListener('pointerup',e=>{if(e.pointerId===touch.lookId)touch.lookId=null;});$('game').addEventListener('pointercancel',()=>touch.lookId=null);
 
-if(new URLSearchParams(location.search).has('qa'))window.__backrooms={get state(){return {beamMode,torchHeat,boostLocked,cranking,weaponOwned,ammo,weaponParts:weaponParts.size,scare:scare?{type:scare.type,variant:scare.variant,time:scare.time}:null,mode,levelIndex,score,decoys,totalElapsed,elapsed,stamina,battery,fuseCount,player:player.toArray(),enemy:sahur?.group.position.toArray(),chasing:alertUntil>elapsed,yaw,pitch,drawCalls:renderer?.info.render.calls};},get settings(){return {...settings};},get survey(){return survey;},map(){markExplored();openModal('map-dialog');},waypoint(x,z){selectMapWaypoint({x,z});},get world(){return world;},get actors(){return actors;},load:loadLevel,complete:completeObjective,finish:finishLevel,decoy:throwDecoy,ping:pingObjective,work(f,dt){holdTarget=f;interactHeld=true;interaction={type:"fuse",item:f};moving=false;updateWork(dt);},get scene(){return scene;},get camera(){return camera;},beam:cycleBeam,torchStep: updateTorch,crank(value){touch.crank=value;},battery(value){battery=value;syncFlashlight();},fire:fireStun,torch:toggleFlashlight,scare:triggerScare,start:startGame,interact,pause:pauseGame,resume:resumeGame,menu:showMenu,teleport(x,z,y=1.65){player.set(x,y,z);camera.position.copy(player);},look(y,p=0){yaw=y;pitch=p;},lookInput:look,touchLook,caption:showAudioCaption,advance(seconds){elapsed+=seconds;},enemyAt(x,z){sahur.group.position.set(x,0,z);},render(){renderer.render(scene,camera);},setSetting(k,v){settings[k]=v;updateSettingsUI();}};
+if(new URLSearchParams(location.search).has('qa'))window.__backrooms={get state(){return {beamMode,torchHeat,boostLocked,cranking,weaponOwned,ammo,weaponParts:weaponParts.size,scare:scare?{type:scare.type,variant:scare.variant,time:scare.time}:null,mode,levelIndex,score,decoys,totalElapsed,elapsed,stamina,battery,fuseCount,player:player.toArray(),enemy:sahur?.group.position.toArray(),chasing:alertUntil>elapsed,yaw,pitch,drawCalls:renderer?.info.render.calls,researchDiscovered,training:{active:training.active,step:training.step,complete:training.complete},quietUntil,lastChaseAt,enemyGraceUntil,pendingScare,nextAmbientScare,scareCooldown,runRules:{...runRules}};},get checkpoint(){return {...stageCheckpoint};},get settings(){return {...settings};},get survey(){return survey;},map(){markExplored();openModal('map-dialog');},waypoint(x,z){selectMapWaypoint({x,z});},get world(){return world;},get actors(){return actors;},load:loadLevel,skipTraining:()=>finishTraining(true),save:saveAndQuit,continue:continueExpedition,capture:captureSuspension,complete:completeObjective,finish:finishLevel,decoy:throwDecoy,ping:pingObjective,work(f,dt){holdTarget=f;interactHeld=true;interaction={type:"fuse",item:f};moving=false;updateWork(dt);},get scene(){return scene;},get camera(){return camera;},beam:cycleBeam,torchStep: updateTorch,crank(value){touch.crank=value;},battery(value){battery=value;syncFlashlight();},fire:fireStun,torch:toggleFlashlight,scare:triggerScare,start:startGame,interact,pause:pauseGame,resume:resumeGame,menu:showMenu,teleport(x,z,y=1.65){player.set(x,y,z);camera.position.copy(player);},look(y,p=0){yaw=y;pitch=p;},lookInput:look,touchLook,caption:showAudioCaption,advance(seconds){elapsed+=seconds;},enemyAt(x,z){sahur.group.position.set(x,0,z);},render(){renderer.render(scene,camera);},setSetting(k,v){settings[k]=v;updateSettingsUI();}};

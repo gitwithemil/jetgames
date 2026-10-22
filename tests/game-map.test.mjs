@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {controlPuzzle,signalCode} from '../dist/survival.js';
 import { createGameRuntime } from './helpers/game-runtime.mjs';
 import { surveyLayout } from '../dist/survey-map.js';
 
@@ -30,6 +31,7 @@ test('the generated stages and survey interface work together', async t => {
     qa.menu();
     await game.document.querySelectorAll('[data-level]')[index].dispatch('click');
     await click('play-button');
+    qa.skipTraining();
     assert.equal(qa.state.mode, 'playing');
     assert.equal(qa.state.levelIndex, index);
     qa.setSetting('scares', false);
@@ -68,9 +70,9 @@ test('the generated stages and survey interface work together', async t => {
     assert.equal(element('load-error').hidden, true);
     assert.ok(qa.world.rooms.length > 3);
     assert.ok(qa.scene.children.some(object => object.isGroup && object.children.some(child => child.isInstancedMesh)), 'World geometry was built.');
-    assert.equal(String(element('brightness-input').value), '100');
-    assert.equal(element('brightness-output').textContent, '100%');
-    assert.equal(game.rendererInstances[0].toneMappingExposure, 1);
+    assert.equal(String(element('brightness-input').value), '200');
+    assert.equal(element('brightness-output').textContent, '200%');
+    assert.equal(game.rendererInstances[0].toneMappingExposure, 2);
     for (const id of ['map-open-button', 'touch-map', 'map-resume', 'map-clear-waypoint']) {
       assert.ok((element(id).events.get('click') ?? []).length, `${id} must have a click binding.`);
     }
@@ -141,8 +143,8 @@ test('the generated stages and survey interface work together', async t => {
     const slider = element('brightness-input');
     const flashlight = qa.scene.getObjectByName('PLAYER_FLASHLIGHT');
     const baseBeam = 62;
-    assert.ok(Math.abs(flashlight.angle - .35) < 1e-12);
-    assert.equal(flashlight.intensity, baseBeam);
+    assert.ok(Math.abs(flashlight.angle - .35 * 2) < 1e-12);
+    assert.ok(Math.abs(flashlight.intensity - baseBeam * Math.sqrt(2)) < 1e-12);
     slider.value = '150';
     await slider.dispatch('input');
     assert.equal(element('brightness-output').textContent, '150%');
@@ -308,6 +310,7 @@ test('the generated stages and survey interface work together', async t => {
         await key('KeyE');
         if (world.level.hold) frames(Math.ceil(world.level.hold / .05) + 2);
         await release('KeyE');
+        if(index===1||index===2){const rule=controlPuzzle(world.level.kind,item.id,world.seed);element('control-a').value=String(rule.a);element('control-b').value=String(rule.b);await click('control-submit');}
         assert.equal(qa.state.fuseCount, before + 1, `${world.level.name} objective ${item.id} responds to E.`);
         assert.equal(item.mesh.visible, false);
       }
@@ -315,6 +318,7 @@ test('the generated stages and survey interface work together', async t => {
       assert.equal(element('objective-title').textContent, 'Get to the exit');
       approach(world.exit, world);
       await key('KeyE'); await release('KeyE');
+      if(index===3){element('signal-input').value=signalCode(world.seed);await click('control-submit');await key('KeyE');frames(162);await release('KeyE');}
       assert.equal(qa.state.mode, index === 3 ? 'won' : 'cleared');
       if (index < 3) {
         assert.equal(element('stage-screen').hidden, false);

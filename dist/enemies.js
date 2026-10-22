@@ -33,13 +33,15 @@ export function createEnemy(T,type){
   return {group,type,name:{smiler:'The Smiler',hound:'The Hound',watcher:'The Watcher'}[type],faceHeight:type==='hound'?1.25:type==='smiler'?2.15:2.65,animate(time,speed=0,angry=false){rig.position.y=Math.sin(time*(type==='smiler'?1.6:8))*(type==='smiler'?.1:.018*speed);for(const l of legs)l.upper.rotation.x=Math.sin(time*9+l.phase)*.09*speed;rig.rotation.z=type==='smiler'?Math.sin(time*.8)*.055:0;}};
 }
 // Enemy senses are separate from steering, so each encounter rewards a different response.
-export function senseEnemy(type,{distance,los,moving,sprinting,crouching,flashlight,observed,working,difficulty=1,time=0,illuminated=flashlight&&observed,signature=1}){
-  if(type==='ballerina')return {detect:(los&&distance<22)||(moving&&!crouching&&distance<12),frozen:false,speed:illuminated?1.65:3.4};
-  if(type==='bribri')return {detect:(los&&distance<24)||distance<(working?23:sprinting?26:4),frozen:false,speed:time%5<1.5?4.15:2.1};
-  if(type==='spioniro')return {detect:(los&&distance<(flashlight?Math.min(30,24*signature):10))||(sprinting&&distance<18),frozen:false,speed:2.55};
-  if(type==='bombardino')return {detect:(los&&distance<30)||(working&&distance<22),frozen:false,speed:2.4};
-  if(type==='watcher')return {detect:los&&distance<28,frozen:los&&observed&&illuminated,speed:3.15};
-  if(type==='smiler')return {detect:los&&distance<(flashlight?Math.min(32,24*signature):4),frozen:false,speed:flashlight?3.45:1.8};
-  if(type==='hound')return {detect:distance<(working?24:sprinting?34:moving&&!crouching?12:1.4)*difficulty,frozen:false,speed:3.6};
-  return {detect:(los&&distance<26)||distance<(sprinting?27:crouching?2.5:moving?8:1.5)*difficulty,frozen:false,speed:2.65};
+export function senseEnemy(type,{distance,los,moving,sprinting,crouching,flashlight,observed,working,difficulty=1,vision=los,illuminated=flashlight&&observed,signature=1}){
+  const result=(visual,sound,proximity,speed,frozen=false,light=false)=>({detect:!!(visual||sound||proximity),visual:!!visual,cause:visual?(light?'light':'sight'):proximity?'proximity':sound?'sound':null,frozen:!!frozen,speed});
+  if(type==='ballerina')return result(vision&&distance<22,moving&&!crouching&&distance<12,false,illuminated?1.65:3.4);
+  // Brri's burst is now an encounter-relative telegraph/charge/recovery cycle.
+  if(type==='bribri')return result(vision&&distance<24,(working||sprinting)&&distance<(working?23:26),!working&&!sprinting&&distance<4,2.1);
+  if(type==='spioniro')return result(vision&&distance<(flashlight?Math.min(30,24*signature):10),sprinting&&distance<18,false,2.55,false,flashlight&&distance>=10);
+  if(type==='bombardino')return result(vision&&distance<30,working&&distance<22,false,2.4);
+  if(type==='watcher')return result(vision&&distance<28,false,false,3.15,los&&observed&&illuminated);
+  if(type==='smiler')return result(vision&&distance<(flashlight?Math.min(32,24*signature):4),false,false,flashlight?3.45:1.8,false,flashlight&&distance>=4);
+  if(type==='hound')return result(false,(working||sprinting||(moving&&!crouching))&&distance<(working?24:sprinting?34:12)*difficulty,distance<1.4*difficulty,3.6);
+  return result(vision&&distance<26,(sprinting||(!crouching&&moving))&&distance<(sprinting?27:8)*difficulty,distance<(crouching?2.5:1.5)*difficulty,2.65);
 }

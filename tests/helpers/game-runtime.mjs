@@ -129,7 +129,7 @@ function parseHTML(html, root) {
 
 // Keep real Three geometry, materials, lights, world generation and gameplay.
 // Only browser facilities and GPU submission are replaced for this integration run.
-export async function createGameRuntime() {
+export async function createGameRuntime(options = {}) {
   const dist = new URL('../../dist/', import.meta.url);
   const html = await fs.readFile(new URL('index.html', dist), 'utf8');
   const document = parseHTML(html, new Element('document'));
@@ -141,7 +141,7 @@ export async function createGameRuntime() {
   document.exitFullscreen = async () => { document.fullscreenElement = null; };
   document.documentElement.requestFullscreen = async () => { document.fullscreenElement = document.documentElement; };
   const windowEvents = new Element('window');
-  const storage = new Map();
+  const storage = new Map(options.initialStorage ?? []);
   let now = 0, frame;
   const rendererInstances = [];
   class MockRenderer {
@@ -157,8 +157,8 @@ export async function createGameRuntime() {
   }
   const previous = new Map();
   const globals = { document, window: {}, location: { search: '?qa' }, innerWidth: 1440,
-    innerHeight: 900, devicePixelRatio: 1, matchMedia: () => ({ matches: false }),
-    localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)) },
+    innerHeight: 900, devicePixelRatio: 1, matchMedia: query => ({ matches: options.coarse === true && query.includes('pointer:coarse') }),
+    localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: key => storage.delete(key) },
     addEventListener: windowEvents.addEventListener.bind(windowEvents),
     requestAnimationFrame: callback => { frame = callback; return 1; },
     performance: { now: () => now }, MockRenderer };

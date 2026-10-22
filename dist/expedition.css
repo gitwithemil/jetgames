@@ -1,0 +1,57 @@
+/* A field guide that keeps the view and controls clear. */
+.brand-wordmark{display:flex;flex-direction:column;gap:6px}
+.brand-edition{display:none;font:7px var(--mono);letter-spacing:1.1px;color:var(--accent)}
+.training-menu-button{display:flex;align-items:center;justify-content:space-between;color:#c6d3bb;border-color:#94b59e40;background:#afc9af08;text-align:left;min-height:40px}
+.training-menu-button>span:last-child{color:#8fa58c;font-size:8px;letter-spacing:.6px}
+.training-menu-button b{margin-left:10px;color:var(--accent);font-size:14px;font-weight:400}
+.training-menu-button:hover{background:#bdd4b614;border-color:#c4dfad70}
+#continue-button{line-height:1.65;text-wrap:balance}
+#field-training{position:absolute;right:40px;bottom:145px;width:340px;max-width:calc(100vw - 44px);padding:17px 19px 18px;background:linear-gradient(120deg,#18261cf5,#111b16ed);border:1px solid #8da88b50;border-left:3px solid var(--accent);box-shadow:0 10px 35px #0005;pointer-events:none}
+.training-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:9px}
+#training-step{color:#b8cc98;font:8px/1.4 var(--mono);letter-spacing:1.2px}
+#training-skip{display:flex;align-items:center;gap:7px;padding:4px 0 4px 8px;background:transparent;color:#a5b49e;font:9px var(--sans);pointer-events:auto;white-space:nowrap}
+#training-skip span{font-size:17px;line-height:10px;color:#d9e1cb}
+#training-skip:hover{color:var(--accent)}
+#training-title{font:600 17px/1.3 var(--sans);letter-spacing:0;color:#f1f2df;margin:0 0 8px}
+#training-detail{font:12px/1.65 var(--sans);color:#b8c5ad;margin:0}
+#save-quit-button{display:flex;align-items:center;justify-content:space-between;min-height:44px;padding-inline:15px;background:#dbea7910;border-color:#dbea7950;color:#d7e2c7}
+#save-quit-button:hover{background:#dbea7920}
+.pause-dialog #pause-save-status{color:#e5b88c;line-height:1.6;margin-top:12px;font-size:11px}
+#pause-save-status:empty{display:none}
+.end-dialog #end-hint{color:#dbe4bf;background:#c5d39209;border-left:2px solid var(--accent);padding:12px 14px;font-size:12px;line-height:1.7;margin-top:-8px}
+#end-hint:empty{display:none}
+@media(max-width:800px){
+  .brand-edition{display:block}
+  #field-training{right:22px;bottom:145px;width:305px;padding:14px 16px}
+  #training-title{font-size:15px}
+  #training-detail{font-size:11px}
+}
+@media(pointer:coarse){
+  .touch-actions{display:grid;grid-template-columns:repeat(3,calc(43px * var(--touch-size,1)));gap:9px}
+  .touch-actions #touch-sprint{width:calc(43px * var(--touch-size,1));height:calc(43px * var(--touch-size,1))}
+  .touch-actions #touch-crouch{font-size:7px;letter-spacing:-.15px}
+  #touch-crouch[aria-pressed=true]{background:#dbea7955;border-color:var(--accent);box-shadow:0 0 14px #dbea7920}
+  #touch-interact{grid-column:3;grid-row:1 / span 2;align-self:center;height:calc(65px * var(--touch-size,1));border-radius:25px;font-size:17px}
+  #field-training{top:178px;bottom:auto;right:22px;width:calc(100% - 44px);padding:11px 14px}
+  .training-meta{margin-bottom:5px}
+  #training-title{font-size:14px;margin-bottom:5px}
+  #training-detail{font-size:11px;line-height:1.5}
+  #training-skip{min-height:26px}
+  #audio-caption{bottom:calc(205px + max(0px,43px * (var(--touch-size,1) - 1)));max-width:calc(100% - 44px)}
+}
+@media(pointer:coarse) and (max-height:620px){
+  #field-training{top:155px}
+}
+@media(pointer:coarse) and (orientation:landscape){
+  #field-training{top:83px;right:24px;left:auto;width:min(300px,38vw)}
+  #training-detail{font-size:10px;line-height:1.5}
+  .training-meta{gap:5px}
+  #training-step{font-size:7px;letter-spacing:.5px}
+  #training-skip{font-size:8px}
+}
+@media(prefers-reduced-motion:reduce){
+  .training-menu-button,#training-skip{transition:none}
+}
+
+.heat-row[hidden],#machine-controls[hidden],#signal-controls[hidden]{display:none!important}
+#control-dialog label{display:block;font-size:13px;margin:18px 0 12px}#control-dialog input[type=range]{height:8px;min-height:24px}#control-readout,#control-result{font-size:12px;line-height:1.7;color:var(--accent)}#signal-input{width:100%;box-sizing:border-box;padding:15px;color:var(--accent);background:#10170e;border:1px solid #879b63;font:24px var(--mono);letter-spacing:12px}#control-dialog .primary-button{width:100%}

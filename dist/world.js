@@ -4,8 +4,10 @@ import { buildWayfinding } from './wayfinding.js';
 import { LEVELS } from './levels.js';
 import { dressLevel } from './themes.js';
 import { addDetails } from './details.js';
+import { prepareObjectiveShortcut, buildObjectiveEffects } from './objective-effects.js';
 // The building is generated locally: every texture, prop and route belongs to it.
-export function createWorld(THREE, scene, levelIndex=0) {
+import {seededRandom,shuffled} from './survival.js';
+export function createWorld(THREE, scene, levelIndex=0,runSeed=0) {
   const level=LEVELS[levelIndex]||LEVELS[0], initialObjects=new Set(scene.children);
   const width = 23, height = 23, cellSize = 4, wallHeight = 3.35;
   let seed = 19041996+levelIndex*91421;
@@ -54,6 +56,7 @@ export function createWorld(THREE, scene, levelIndex=0) {
     }
   }
   for (let z = 1; z < height-1; z++) for (let x = 1; x < width-1; x++) if (!grid[z][x] && !reached.has(`${x},${z}`)) grid[z][x] = 1;
+  const objectiveShortcut=prepareObjectiveShortcut(grid,level.kind);
 
   const root = new THREE.Group(); root.name = 'LEVEL_00_THE_FORGOTTEN_OFFICES'; scene.add(root);
   scene.background = new THREE.Color(0x17170f);
@@ -180,7 +183,10 @@ export function createWorld(THREE, scene, levelIndex=0) {
   [[11,13],[3,15],[16,6],[19,16]].forEach(([x,z])=>{const p=cellCenter(x,z);const stain=new THREE.Mesh(new THREE.CircleGeometry(1.35,24),stainMat);stain.rotation.x=-Math.PI/2;stain.scale.set(1,.6,1);stain.position.set(p.x,.015,p.z);root.add(stain);});
 
   // Five power fuses, on tangible maintenance cabinets with lighted indicators.
-  const fusePositions=[[3,3],[6,12],[3,20],[19,3],[20,12]].slice(0,level.count);
+  const variation=seededRandom((runSeed+levelIndex*91421)>>>0);
+  const candidates=shuffled(queue.filter(([x,z])=>Math.hypot(x-11,z-20)>6&&Math.hypot(x-18,z-5)>3),variation);
+  const chosen=[];for(const c of candidates){if(chosen.every(p=>Math.hypot(p[0]-c[0],p[1]-c[1])>4))chosen.push(c);if(chosen.length===level.count)break;}
+  const fusePositions=runSeed&&chosen.length===level.count?chosen:[[3,3],[6,12],[3,20],[19,3],[20,12]].slice(0,level.count);
   const fuseLabels=['ARCHIVE','SERVICE','STORAGE','EAST WING','UTILITY'];
   const fuses=[];
   const glassMat=new THREE.MeshStandardMaterial({color:0x86fff0,emissive:0x48c8b6,emissiveIntensity:.8,roughness:.22,metalness:.35});
@@ -227,7 +233,9 @@ export function createWorld(THREE, scene, levelIndex=0) {
   const exit={position:new THREE.Vector3(46,1.1,85.7),mesh:exitGroup};
   let currentPower=0;
   const exitGlow=new THREE.PointLight(0xa7df87,0,8,1.8);exitGlow.position.set(46,2.5,85);scene.add(exitGlow);
-  function setPower(count){
+  function setPower(count,ids){
+    count=Math.max(0,Math.min(level.count,Number.isFinite(count)?Math.floor(count):0));
+    objectiveEffects.setPower(count,ids);
     exitIndicators.forEach((lamp,i)=>lamp.material.color.setHex(i<count?0xb8ff91:i<level.count?0x9b422a:0x262a22));
     exitGlow.intensity=count===level.count?1.5:0;
     if((count===level.count)!==(currentPower===level.count)){
@@ -241,9 +249,11 @@ export function createWorld(THREE, scene, levelIndex=0) {
   const details=level.kind==='office'||level.kind==='archive'?addDetails(THREE,root,{edges,grid,cellSize,wallHeight,random,box,metalMat,darkMetal,paperMat,placard}):{obstacles:[],update(){}};
   const dressing=dressLevel(THREE,root,scene,{level,grid,edges,cellSize,wallHeight,random,box,wallMat,floorMat,ceilingMat,hemi,daylight,lights,fluorescentMat,placard});
   const architecture=buildRooms(THREE,root,{index:levelIndex,grid,edges,cellSize,wallHeight,box,placard,random,occupied:details.obstacles});
+  if(objectiveShortcut)grid[objectiveShortcut.z][objectiveShortcut.x]=1;
   const wayfinding=buildWayfinding(THREE,root,{index:levelIndex,grid,edges,cellSize,rooms:architecture.rooms,placard});
   const collisionProps=[...details.obstacles,...architecture.obstacles];
   const armory=buildArmory(THREE,root,{grid,box,placard,spawn,fuses});
+  const objectiveEffects=buildObjectiveEffects(THREE,root,scene,{level,grid,cellSize,wallHeight,shortcut:objectiveShortcut,lights,fuses,box,placard});
   let blackout=0;
   function setBlackout(seconds){blackout=Math.max(blackout,seconds);}
   function isWalkable(x,z,radius=.25){
@@ -256,6 +266,9 @@ export function createWorld(THREE, scene, levelIndex=0) {
     for(const o of collisionProps){const nx=Math.max(o.x-o.hx,Math.min(x,o.x+o.hx)),nz=Math.max(o.z-o.hz,Math.min(z,o.z+o.hz));if((x-nx)**2+(z-nz)**2<radius*radius)return false;}
     return true;
   }
+  const safeCells=shuffled(queue.map(([x,z])=>cellCenter(x,z)).filter(p=>isWalkable(p.x,p.z,.4)&&p.distanceTo(spawn)>20&&fuses.every(f=>p.distanceTo(f.position)>5)),variation);
+  if(runSeed)dressing.supplies.forEach((item,i)=>{const p=safeCells[i*3];if(p){item.position.set(p.x,.5,p.z);item.mesh.position.copy(item.position);}});
+  const enemyHomes=runSeed?safeCells.filter(p=>p.distanceTo(spawn)>32).slice(12,15):null;
   function findPath(fromPosition,toPosition){
     const start=cellAt(fromPosition.x,fromPosition.z),goal=cellAt(toPosition.x,toPosition.z);
     if(!openCell(start.x,start.z)||!openCell(goal.x,goal.z))return [];
@@ -277,15 +290,16 @@ export function createWorld(THREE, scene, levelIndex=0) {
   }
   function update(time,dt){
     blackout=Math.max(0,blackout-dt);details.update(time);dressing.update(time);architecture.update(time);hemi.intensity=blackout>0?.002:dressing.baseHemi;daylight.intensity=0;
-    lights.forEach(({light,baseIntensity,phase,index})=>{const flutter=.975+Math.sin(time*17+phase)*.02+Math.sin(time*31+phase)*.015;const failing=index===2&&Math.sin(time*2.3+phase)>.973?.38:1;light.intensity=baseIntensity*flutter*failing*(blackout>0?.015:1);});
+    lights.forEach(({light,baseIntensity,phase,index})=>{const flutter=.975+Math.sin(time*17+phase)*.02+Math.sin(time*31+phase)*.015;const failing=index===2&&Math.sin(time*2.3+phase)>.973?.38:1;light.intensity=baseIntensity*flutter*failing*(blackout>0?.015:1)*objectiveEffects.lightMultiplier(index);});
     fluorescentMat.emissiveIntensity=blackout>0?.005:.2+Math.sin(time*22)*.018;
+    objectiveEffects.update(time,dt,blackout>0);
     fuses.forEach((f,i)=>{if(f.mesh.visible){f.mesh.rotation.y=Math.sin(time*.8+i)*.12;f.mesh.position.y=f.position.y+Math.sin(time*1.8+i)*.035;}});
   }
   const introCameraPosition=new THREE.Vector3(43,1.6,82);
   const introEnemyPosition=new THREE.Vector3(46.15,0,72.5);
   // Batch static box props by material; detailed rooms need dozens, not hundreds, of draw calls.
   root.updateMatrixWorld(true);
-  const dynamic=new Set();[...fuses.map(f=>f.mesh),...armory.parts.map(p=>p.mesh),armory.bench.mesh,exitGroup].forEach(g=>g.traverse(o=>dynamic.add(o)));
+  const dynamic=new Set();[...fuses.map(f=>f.mesh),...armory.parts.map(p=>p.mesh),armory.bench.mesh,exitGroup,...objectiveEffects.dynamicRoots].forEach(g=>g.traverse(o=>dynamic.add(o)));
   const batches=new Map();root.traverse(m=>{
     if(!m.isMesh||m.isInstancedMesh||m.geometry.type!=='BoxGeometry'||Array.isArray(m.material)||dynamic.has(m)||m.children.length)return;
     const list=batches.get(m.material)||[];list.push(m);batches.set(m.material,list);
@@ -301,5 +315,5 @@ export function createWorld(THREE, scene, levelIndex=0) {
     owned.forEach(o=>{scene.remove(o);o.traverse(n=>{if(n.geometry)geometries.add(n.geometry);for(const m of n.material?(Array.isArray(n.material)?n.material:[n.material]):[]){materials.add(m);for(const value of Object.values(m))if(value?.isTexture)textures.add(value);}});if(o.shadow)o.shadow.dispose();});
     geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());
   }
-  return {armory,rooms:architecture.rooms,roomAt:architecture.at,wayfinding,level,levelIndex,targetCount:level.count,supplies:dressing.supplies,dispose,grid,width,height,cellSize,spawn,introYaw:0,introCameraPosition,introEnemyPosition,enemySpawn,fuses,exit,lights,update,setPower,setBlackout,isWalkable,cellAt,cellCenter,findPath,lineOfSight};
+  return {enemyHomes,seed:runSeed,armory,rooms:architecture.rooms,roomAt:architecture.at,wayfinding,level,levelIndex,targetCount:level.count,objectiveState:objectiveEffects.state,supplies:dressing.supplies,dispose,grid,width,height,cellSize,spawn,introYaw:0,introCameraPosition,introEnemyPosition,enemySpawn,fuses,exit,lights,update,setPower,setBlackout,isWalkable,cellAt,cellCenter,findPath,lineOfSight};
 }

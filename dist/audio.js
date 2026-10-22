@@ -1,6 +1,14 @@
 // Generated room tone and restrained horror cues. Creation alone is silent.
 export function createAudio() {
   let ctx=null, master=null, ambient=null, buzzGain=null, hissGain=null, noiseBuffer=null;
+  const spatialBuses=new Map(),bearings=new Map();let entitySound=false,routingType='sahur';
+  function setSpatial(value,type='sahur'){
+    bearings.set(type,value);if(!ctx||!master)return;
+    let bus=spatialBuses.get(type);
+    if(!bus){const gain=ctx.createGain(),filter=ctx.createBiquadFilter(),pan=ctx.createStereoPanner?.();filter.type='lowpass';gain.connect(filter);if(pan){filter.connect(pan);pan.connect(master);}else filter.connect(master);bus={gain,filter,pan};spatialBuses.set(type,bus);}
+    bus.gain.gain.setTargetAtTime(value.gain,ctx.currentTime,.08);bus.filter.frequency.setTargetAtTime(value.cutoff,ctx.currentTime,.08);bus.pan?.pan.setTargetAtTime(value.pan,ctx.currentTime,.08);
+  }
+
   let volume=.38, paused=false, disposed=false, initialized=false;
   let nextKnock=5, nextBeat=0, lastStep=-100, lastCrank=-100, time=0;
   let captionHandler=()=>{};
@@ -32,7 +40,7 @@ export function createAudio() {
     gain.gain.setValueAtTime(.0001,at);
     gain.gain.exponentialRampToValueAtTime(Math.max(.0002,level),at+attack);
     gain.gain.exponentialRampToValueAtTime(.0001,at+duration);
-    gain.connect(master); return gain;
+    gain.connect(entitySound&&spatialBuses.has(routingType)?spatialBuses.get(routingType).gain:master); return gain;
   }
   function tone(frequency,at,duration,level,type='sine',endFrequency=null) {
     const oscillator=ctx.createOscillator();
@@ -69,6 +77,7 @@ export function createAudio() {
       compressor.threshold.value=-18; compressor.knee.value=20;
       compressor.ratio.value=5; compressor.attack.value=.012; compressor.release.value=.22;
       master.connect(compressor);compressor.connect(ctx.destination);
+      for(const [type,bearing] of bearings)setSpatial(bearing,type);
       noiseBuffer=noise();
       ambient=ctx.createGain();ambient.gain.value=.85;ambient.connect(master);
       buzzGain=ctx.createGain();buzzGain.gain.value=.026;buzzGain.connect(ambient);
@@ -97,7 +106,7 @@ export function createAudio() {
     if(announce)captionHandler('Three hollow knocks echo through the halls.');
     const near=Math.max(0,1-state.distance/25);
     const level=.024+near*.105;
-    const pan=Math.sin(time*.23)*(1-near)*.48;
+    const pan=entitySound?0:Math.sin(time*.23)*(1-near)*.48;
     const at=ctx.currentTime;
     for(let i=0;i<3;i++) {
       const t=at+i*.145;
@@ -110,7 +119,8 @@ export function createAudio() {
     if(!available())return;
     const captions={sahur:'Three hollow knocks echo through the halls.',ballerina:'A thin, wavering melody rings nearby.',bribri:'A low growl rumbles nearby.',spioniro:'A sharp electronic chirp cuts through the silence.',bombardino:'A heavy engine-like drone approaches.',smiler:'A high, wavering hum hangs in the air.',hound:'A guttural growl sounds nearby.',watcher:'A faint static hiss rises nearby.'};
     captionHandler(captions[type]||'A strange sound echoes nearby.');
-    if(type==='sahur'){knock(false);return;}
+    entitySound=true;routingType=type;
+    if(type==='sahur'){knock(false);entitySound=false;return;}
     const at=ctx.currentTime,near=Math.max(0,1-state.distance/28),level=.025+near*.07;
     if(type==='ballerina'){[880,698,1046].forEach((f,i)=>tone(f,at+i*.11,.24,level*.45,'triangle',f*.94));}
     if(type==='bribri'){tone(205,at,.24,level*.8,'sawtooth',75);filteredNoise(at,.15,level*.7,900,2);}
@@ -119,6 +129,24 @@ export function createAudio() {
     if(type==='smiler'){tone(930,at,.65,level*.5,'sine',530);tone(957,at+.05,.6,level*.4,'sine',610);filteredNoise(at,.45,level*.6,2800,2);}
     if(type==='hound'){tone(78,at,.55,level,'sawtooth',40);filteredNoise(at,.65,level,260,1.4);}
     if(type==='watcher'){filteredNoise(at,.55,level,680,3);tone(128,at,.7,level*.7,'triangle',92);}
+    entitySound=false;
+  }
+  function chargeWarning(){
+    if(!available()||volume<=0)return;
+    entitySound=true;routingType='bribri';
+    captionHandler('Brri scrapes the floor. Two rising metal beats warn of a charge. Sidestep!');
+    const at=ctx.currentTime,near=Math.max(0,1-state.distance/28),level=.045+near*.05;
+    // A sustained scrape and two separated, rising clangs distinguish the
+    // one-second wind-up from Brri's ordinary low growl.
+    filteredNoise(at,.65,level*.45,700,1.8);
+    tone(110,at,.65,level*.3,'sawtooth',270);
+    for(const [i,offset] of [0.15,.49].entries()){
+      const beat=at+offset;
+      tone(240+i*180,beat,.18,level,'triangle',360+i*210);
+      tone(610+i*220,beat,.13,level*.4,'sine',760+i*220);
+      filteredNoise(beat,.065,level*.35,1800+i*800,2);
+    }
+    entitySound=false;
   }
   function heartbeat() {
     const at=ctx.currentTime;
@@ -230,8 +258,8 @@ export function createAudio() {
   function dispose() {
     disposed=true;initialized=false;
     for(const node of [...loops,...live]) {try{node.stop();node.disconnect();}catch{}}
-    live.clear();loops.length=0;
+    live.clear();loops.length=0;for(const {gain,filter,pan} of spatialBuses.values()){gain.disconnect();filter.disconnect();pan?.disconnect();}spatialBuses.clear();
     if(ctx&&ctx.state!=='closed')ctx.close().catch(()=>{});
   }
-  return {init,update,step,collect,sting,scarePrelude,jumpscare,stunPulse,torchClick,crank,win,knock,entityCue,setVolume,setCaptionHandler,pause,resume,dispose};
+  return {setSpatial,init,update,step,collect,sting,scarePrelude,jumpscare,stunPulse,torchClick,crank,win,knock,entityCue,chargeWarning,setVolume,setCaptionHandler,pause,resume,dispose};
 }

@@ -12,7 +12,7 @@ The `Deploy to GitHub Pages` workflow publishes `dist` when changes are pushed t
 
 ## Controls
 
-WASD / arrows: move. Mouse: look. Shift: sprint. C: crouch. E: recover fuses / exit. F: flashlight. M: explored map. Escape: pause. Touch devices have a joystick, drag-to-look, and action buttons.
+WASD / arrows: move. Mouse: look. Shift: sprint. C: crouch. E: recover fuses / exit. F: flashlight. M: explored map. Escape: pause. Touch devices have a joystick, drag-to-look, action buttons, and a crouch toggle. Use **Save and return to menu** from pause to suspend an expedition on this device.
 
 ## Features
 
@@ -112,3 +112,26 @@ Select a charted corridor to pin a waypoint. Routes use only charted, collision-
 Settings include optional on-screen captions for important audio cues, reduced visual effects, independent camera-motion and jumpscare controls, and saved look sensitivity. Touch players can adjust control size and swap the movement/action sides for left-handed play. The optional Supply Shortage challenge begins each stage with 65% flashlight battery and one decoy, and awards 25% more points; standard runs are unchanged. The HUD calls out low or exhausted stamina and exposes live meter values to assistive technology.
 
 Validation: run `node --test tests/*.test.mjs`. The tests cover all four generated worlds with actual Three.js geometry; objective, supply, armory and spawn reachability; 13 alternate bypass routes; wall and corner visibility; discovered-only markers; collision-aware waypoint routes; pause/resume and reset; campaign objective interactions and transitions; accessibility preferences and challenge scoring; and retained darkness, character roster and decoy controls. Browser/GPU facilities are stubbed in the automated game tests.
+
+## Environmental objectives and saved expeditions (v3.3)
+
+Objectives now change their stage. Lobby fuses restore local fixtures. Poolroom relays drain the water and open a Maintenance passage after two activations. Pipeworks valves reduce steam, open a Boiler bypass after two releases, and shut the vents down at completion. Archive tapes restore a coherent sequence of survival clues on signal receivers. New service openings update collision, enemy navigation, line of sight, and the survey plan together; all original objective routes remain available. Replay resets the changes.
+
+Brri plants its feet for a one-second warning, with a floor scrape and two rising metal beats, before charging in a committed direction. It recovers afterward and stops its charge at walls. Stuns interrupt the sequence. Enemies follow a last-known position, investigate nearby passages, and return to patrol after a bounded search. Seeing the player takes priority over a decoy; sound hunters can still follow the lure. Death results explain the detection cause and give advice for the attacking entity.
+
+First-time Lobby players get a skippable, playable guide covering movement, crouching, decoys, and beam modes. Enemies wait during practice, the practice decoy is refunded, and a grace period follows. **Guided start** replays the introduction. Weapon-crafting HUD details appear after discovering research, while carried weapons remain available immediately. Touch players can toggle crouch. Fake-outs wait during chases, close encounters, active work, hand-cranking, critical battery, and the recovery period after a chase.
+
+Stage checkpoints retain score, total time, projector ownership and charges, difficulty, and challenge rules. **Save and return to menu** also retains in-stage objectives, looted supplies and research cases, resources, camera position, explored map, waypoint, active decoy, enemy positions, pursuit state, charge timing, and remaining stun durations. **Resume** restores that run after reloading the page. Retry restores the independent stage-start baseline, including score, equipment, and time. Starting a new expedition replaces the saved run. Invalid positions fall back to the stage checkpoint; unavailable storage leaves an unsuccessful save paused and explains the problem.
+
+Validation: `node --test tests/*.test.mjs` exercises campaign transitions, actual control inputs, mobile crouching, search and charge movement, environmental collision/path changes, save/reload, retry, corrupt saves, and storage failures. Chrome smoke verification covered the rendered menu and training panel, completing the guide with keyboard input, the pause layout, saving, and resuming after a real page reload. Automated rendering uses a GPU stub; mobile visual layout and the full campaign's rendered effects and audio still need playtesting.
+
+
+## Stealth, replay and extraction (v3.4)
+
+Sight-based entities have forward patrol vision (130°) and wider pursuit vision (200°); hearing and close contact still apply. Watcher freezing still uses the actual unobstructed flashlight beam. Entity sound buses independently follow each actor relative to the camera, with distance attenuation and low-pass wall muffling. Captions remain available when muted.
+
+New expeditions randomize objectives, supplies and enemy starting positions with a persistent seed. Room layouts stay recognizable. Retry and resume preserve placements; older seedless saves retain the original layout. Local Lobby circuits restore by recovered fuse identity.
+
+After holding E at a relay or valve, an accessible, paused terminal opens: Poolrooms require branch routing; Pipeworks require equal pressure and the requested total. Cancelling leaves the machine unfinished. Archive tapes encode a three-digit exit signal with a documented +10 offset. Decode the exit terminal, then hold E at the door for eight noisy seconds to transmit and escape. Leaving, releasing E or pausing cancels extraction; the decoded signal persists in saves. The ending resolves all four environments.
+
+The HUD hides idle heat, the hand-crank above 25% battery, early control hints after 45 seconds, and inactive weapon details. Touch and keyboard controls remain available.
