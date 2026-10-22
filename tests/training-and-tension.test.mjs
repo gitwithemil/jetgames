@@ -8,7 +8,7 @@ test('a new player learns through movement, crouching, a practice decoy and a be
   const game = await createGameRuntime();
   t.after(() => game.dispose());
   const { qa, element, frames, key, release } = game;
-  await qa.start(0);
+  await qa.start(0,{training:true});
   assert.equal(qa.state.training.active, true);
   assert.equal(element('field-training').hidden, false);
   assert.equal(element('weapon-quest').hidden, true);
@@ -61,7 +61,7 @@ test('touch crouch changes the player stance and completes the quiet-movement le
   const game = await createGameRuntime({ coarse: true });
   t.after(() => game.dispose());
   const { qa, element, frames, key, release } = game;
-  await qa.start(0);
+  await qa.start(0,{training:true});
   assert.match(element('training-detail').textContent, /stick/);
   await key('KeyW'); frames(15); await release('KeyW');
   await element('touch-crouch').dispatch('click'); frames(16);

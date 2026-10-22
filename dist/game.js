@@ -279,7 +279,7 @@ async function startGame(requested,options={}){
   world.fuses.forEach(f=>f.mesh.visible=true);world.setPower(0);heldFlashlight.visible=true;
   researchDiscovered=weaponOwned;lastDetection={type:world.level.enemy,cause:'sight'};
   let trained=false;try{trained=localStorage.getItem('sahur-field-training-v1')==='complete';}catch{}
-  training={active:levelIndex===0&&(options.training||(!trained&&fresh&&!options.resume)),step:0,complete:trained,origin:player.clone(),crouchTime:0};
+  training={active:levelIndex===0&&!!options.training,step:0,complete:trained,origin:player.clone(),crouchTime:0};
   const restored=options.resume?.suspended?restoreSuspension(options.resume.suspended):false;
   $('objective-title').textContent=fuseCount===world.targetCount?'Get to the exit':world.level.objective;
   $('objective-detail').textContent=fuseCount===world.targetCount?'Exit unlocked. Return to the green door.':world.level.brief;
@@ -354,7 +354,7 @@ $('play-button').addEventListener('click',()=>startGame(selectedLevel));$('retry
 $('stage-continue').addEventListener('click',()=>startGame(levelIndex+1));
 $('stage-menu').addEventListener('click',showMenu);
 $('continue-button').addEventListener('click',continueExpedition);
-$('training-button').addEventListener('click',()=>startGame(0,{training:true}));
+$('training-button').addEventListener('click',()=>{if(activeModal)closeModal();startGame(0,{training:true});});
 $('training-skip').addEventListener('click',()=>finishTraining(true));
 $('save-quit-button').addEventListener('click',saveAndQuit);
 $('touch-crouch').addEventListener('click',()=>{if(mode!=='playing')return;touch.crouch=!touch.crouch;$('touch-crouch').setAttribute('aria-pressed',String(touch.crouch));});
@@ -653,18 +653,18 @@ function updateEnemy(dt){
       else{a.charge=updateBrriCharge(a.charge,{time:elapsed,position:pos,blocked:true});a.pathTimer=0;}
     }else{
       a.pathTimer-=dt;
-      if(a.pathTimer<=0){
+      if(a.pathTimer<=0&&(!a.path.length||pos.distanceTo(a.path[0])<.002)){
         a.pathTimer=a.pursuit.phase==='patrol'?2:.45;
         const destination=a.pursuit.target?new THREE.Vector3(a.pursuit.target.x,0,a.pursuit.target.z):a.goal&&pos.distanceTo(a.goal)>1?a.goal:(a.goal=pickPatrol());
         a.path=world.findPath(pos,destination);
       }
       if(a.path.length&&!senses.frozen){
         const next=a.path[0],v=next.clone().sub(pos);v.y=0;const distance=v.length();
-        if(distance<.16)a.path.shift();else{
+        if(distance<.002){pos.x=next.x;pos.z=next.z;a.path.shift();}else{
           v.divideScalar(distance);speed=(a.pursuit.phase==='patrol'?1.2:a.pursuit.phase==='search'?1.5:senses.speed)*difficulty;
           if(model.type==='bribri')speed*=a.charge.speedMultiplier;
           const step=Math.min(speed*dt,distance),nx=pos.x+v.x*step,nz=pos.z+v.z*step;
-          if(world.isWalkable(nx,nz,.3)){pos.x=nx;pos.z=nz;}else{a.path=[];a.pathTimer=0;}
+          if(world.isWalkable(nx,nz,.3)){pos.x=nx;pos.z=nz;}else{const cell=world.cellAt(pos.x,pos.z),centre=world.cellCenter(cell.x,cell.z);a.path=pos.distanceTo(centre)>.01?[centre]:[];a.pathTimer=0;if(a.pursuit.phase==='patrol')a.goal=null;}
           const targetYaw=Math.atan2(v.x,v.z);model.group.rotation.y+=Math.atan2(Math.sin(targetYaw-model.group.rotation.y),Math.cos(targetYaw-model.group.rotation.y))*Math.min(1,dt*9);
         }
       }
