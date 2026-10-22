@@ -336,6 +336,7 @@ function closeModal(){
   if(!activeModal)return;const {id,wasPlaying}=activeModal;activeModal=null;if(id==='control-dialog')puzzleTarget=null;$(id).close();if(wasPlaying)resumeGame();
 }
 function updateSettingsUI(){
+  world?.setAtmosphereEffects(settings.reducedEffects);
   $('volume-input').value=settings.volume;$('volume-output').textContent=`${settings.volume}%`;
   $('sensitivity-input').value=settings.sensitivity;$('sensitivity-output').textContent=`${settings.sensitivity}%`;
   $('brightness-input').value=settings.brightness;$('brightness-output').textContent=`${settings.brightness}%`;
@@ -540,7 +541,7 @@ function loadLevel(index){
   resetSurvey(survey);mapKeyboard=false;
   clearScare();stunView?.hide();if(decoy){scene.remove(decoy.mesh);decoy.mesh.geometry.dispose();decoy.mesh.material.dispose();decoy=null;}
   if(world)world.dispose();Object.values(enemyModels).forEach(m=>{m.stunAura.visible=false;scene.remove(m.group);});
-  levelIndex=index;selectedLevel=index;world=createWorld(THREE,scene,index,runSeed);
+  levelIndex=index;selectedLevel=index;world=createWorld(THREE,scene,index,runSeed);world.setAtmosphereEffects(settings.reducedEffects);
   sahur=enemyModels[world.level.enemy];actors=world.level.enemies.map((type,i)=>{const model=enemyModels[type],home=world.enemyHomes?.[i]||(i===1?world.cellCenter(3,6):i===2?world.cellCenter(19,17):world.enemySpawn);model.group.position.copy(home);model.group.rotation.x=0;model.group.rotation.y=0;model.group.visible=true;scene.add(model.group);return makeActor(model,home);});
   useScareModel(sahur);nearestActor=actors[0];enemyHome.copy(actors[0].home||sahur.group.position);player.copy(world.spawn);menuCamera.copy(world.introCameraPosition);yaw=0;pitch=0;
   document.documentElement.style.setProperty('--accent',world.level.color);

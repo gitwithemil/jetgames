@@ -1,3 +1,4 @@
+import { buildAtmosphere } from './atmosphere.js';
 import { buildArmory } from './weapon.js';
 import { buildRooms, subdivideRooms } from './rooms.js';
 import { buildWayfinding } from './wayfinding.js';
@@ -252,6 +253,7 @@ export function createWorld(THREE, scene, levelIndex=0,runSeed=0) {
   if(objectiveShortcut)grid[objectiveShortcut.z][objectiveShortcut.x]=1;
   const wayfinding=buildWayfinding(THREE,root,{index:levelIndex,grid,edges,cellSize,rooms:architecture.rooms,placard});
   const collisionProps=[...details.obstacles,...architecture.obstacles];
+  const atmosphere=buildAtmosphere(THREE,root,{level,rooms:architecture.rooms,edges,obstacles:collisionProps,grid,cellSize,placard});
   const armory=buildArmory(THREE,root,{grid,box,placard,spawn,fuses});
   const objectiveEffects=buildObjectiveEffects(THREE,root,scene,{level,grid,cellSize,wallHeight,shortcut:objectiveShortcut,lights,fuses,box,placard});
   let blackout=0;
@@ -289,7 +291,7 @@ export function createWorld(THREE, scene, levelIndex=0,runSeed=0) {
     for(let i=0;i<=steps;i++){const t=i/steps;if(!isWalkable(from.x+(to.x-from.x)*t,from.z+(to.z-from.z)*t,.035))return false;}return true;
   }
   function update(time,dt){
-    blackout=Math.max(0,blackout-dt);details.update(time);dressing.update(time);architecture.update(time);hemi.intensity=blackout>0?.002:dressing.baseHemi;daylight.intensity=0;
+    blackout=Math.max(0,blackout-dt);atmosphere.update(dt);details.update(time);dressing.update(time);architecture.update(time);hemi.intensity=blackout>0?.002:dressing.baseHemi;daylight.intensity=0;
     lights.forEach(({light,baseIntensity,phase,index})=>{const flutter=.975+Math.sin(time*17+phase)*.02+Math.sin(time*31+phase)*.015;const failing=index===2&&Math.sin(time*2.3+phase)>.973?.38:1;light.intensity=baseIntensity*flutter*failing*(blackout>0?.015:1)*objectiveEffects.lightMultiplier(index);});
     fluorescentMat.emissiveIntensity=blackout>0?.005:.2+Math.sin(time*22)*.018;
     objectiveEffects.update(time,dt,blackout>0);
@@ -299,7 +301,7 @@ export function createWorld(THREE, scene, levelIndex=0,runSeed=0) {
   const introEnemyPosition=new THREE.Vector3(46.15,0,72.5);
   // Batch static box props by material; detailed rooms need dozens, not hundreds, of draw calls.
   root.updateMatrixWorld(true);
-  const dynamic=new Set();[...fuses.map(f=>f.mesh),...armory.parts.map(p=>p.mesh),armory.bench.mesh,exitGroup,...objectiveEffects.dynamicRoots].forEach(g=>g.traverse(o=>dynamic.add(o)));
+  const dynamic=new Set();[...fuses.map(f=>f.mesh),...armory.parts.map(p=>p.mesh),armory.bench.mesh,exitGroup,...objectiveEffects.dynamicRoots,...atmosphere.dynamicRoots].forEach(g=>g.traverse(o=>dynamic.add(o)));
   const batches=new Map();root.traverse(m=>{
     if(!m.isMesh||m.isInstancedMesh||m.geometry.type!=='BoxGeometry'||Array.isArray(m.material)||dynamic.has(m)||m.children.length)return;
     const list=batches.get(m.material)||[];list.push(m);batches.set(m.material,list);
@@ -315,5 +317,5 @@ export function createWorld(THREE, scene, levelIndex=0,runSeed=0) {
     owned.forEach(o=>{scene.remove(o);o.traverse(n=>{if(n.geometry)geometries.add(n.geometry);for(const m of n.material?(Array.isArray(n.material)?n.material:[n.material]):[]){materials.add(m);for(const value of Object.values(m))if(value?.isTexture)textures.add(value);}});if(o.shadow)o.shadow.dispose();});
     geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());
   }
-  return {enemyHomes,seed:runSeed,armory,rooms:architecture.rooms,roomAt:architecture.at,wayfinding,level,levelIndex,targetCount:level.count,objectiveState:objectiveEffects.state,supplies:dressing.supplies,dispose,grid,width,height,cellSize,spawn,introYaw:0,introCameraPosition,introEnemyPosition,enemySpawn,fuses,exit,lights,update,setPower,setBlackout,isWalkable,cellAt,cellCenter,findPath,lineOfSight};
+  return {atmosphere,setAtmosphereEffects:value=>atmosphere.setReduced(value),enemyHomes,seed:runSeed,armory,rooms:architecture.rooms,roomAt:architecture.at,wayfinding,level,levelIndex,targetCount:level.count,objectiveState:objectiveEffects.state,supplies:dressing.supplies,dispose,grid,width,height,cellSize,spawn,introYaw:0,introCameraPosition,introEnemyPosition,enemySpawn,fuses,exit,lights,update,setPower,setBlackout,isWalkable,cellAt,cellCenter,findPath,lineOfSight};
 }

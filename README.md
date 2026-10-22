@@ -142,3 +142,10 @@ The HUD hides idle heat, the hand-crank above 25% battery, early control hints a
 Enemy gait advances with actual movement speed and eases back to idle. Sahur has stronger knee flexion, opposing arm swing and body weight transfer; articulated hips drive the bird and spy strides, Ballerina steps lightly, and the Hound uses alternating diagonal limbs. Smiler gliding and Bombardino hovering retain their distinct silhouettes. Frozen and stunned enemies hold their poses.
 
 A slow violet peripheral haze and a short on-screen warning grow stronger inside 12 metres of an unstunned enemy. It also warns before a chase. Training, grace periods, menus, pauses and scare sequences suppress it. Reduced effects and reduced camera motion use a subdued steady edge treatment. No camera shake or strobing is added.
+
+
+## Environmental landmarks
+
+Each architectural zone now has a themed wall landmark: stopped clocks, staff notices and abandoned monitors; pool depth markers, damaged tiles and trickling fixtures; caged exhaust fans and moving pressure gauges; archive tape reels, mail cubbies and observation panels. Room-specific notices add clues about the abandoned building. Sparse drifting motes provide subtle movement.
+
+Landmarks select bare wall sections clear of existing furniture and preserve floor routes, objectives and service shortcuts. Static boxes share the existing instancing pass; only fan blades, gauge needles and reels remain animated. No new lights are added. Animation pauses with gameplay, reduced effects stops environmental movement and hides motes, and level disposal owns the new geometry and materials.
