@@ -159,3 +159,9 @@ Regular Play starts enemy patrols after the normal spawn grace period; safe trai
 ## Waypoint guidance
 
 Place a waypoint on a charted corridor in the survey map to keep a direction arrow and route distance in the HUD after closing the map. Guidance uses the known, walkable route rather than pointing through walls; it disappears when the waypoint is cleared and marks nearby arrival.
+
+## Horror soundscape
+
+Each stage now has an ominous detuned drone and occasional distant environmental sounds: ceiling creaks in the Lobby, water drips in the Poolrooms, groaning metal in the Pipeworks and rustling paper in the Red Archive. These cues vary in timing and stereo direction. Nearby threats deepen the drone; a chase adds urgent breathing and suppresses environmental cues until the player has had a short recovery period. Important sounds have captions through the existing Sound captions setting.
+
+All added sounds are generated locally, work offline and follow master volume, mute and pause. They start after entering the game. The optional bundled capture scream loads in the background so a slow download cannot hold up audio startup; generated scare sounds remain available if it fails.

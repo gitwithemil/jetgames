@@ -293,7 +293,7 @@ async function startGame(requested,options={}){
   camera.position.copy(player);camera.rotation.set(pitch,yaw,0);syncFlashlight();renderTraining();updateHUD(0);
   clearTimeout(toastTimer);$('toast').classList.remove('show');
   lastTime=performance.now();lockPointer();
-  try{await audio.init();setVolume();audio.resume();}catch{}
+  try{await audio.init();setVolume();if(mode==='playing')audio.resume();}catch{}
   markExplored();
   if(!options.resume||!restored)persistExpedition();
   notify(restored?'EXPEDITION RESUMED · Your progress and equipment are restored.':options.resume?.suspended?'Saved position unavailable. Your stage checkpoint and equipment are restored.':`LEVEL ${world.level.code} — ${world.level.tip}`,6500);
@@ -538,6 +538,7 @@ function useScareModel(model){
   if(scareFace)camera.remove(scareFace);scareFace=model.group.clone(true);scareFace.visible=false;scareFace.userData.faceHeight=model.faceHeight;scareFace.userData.type=model.type;const aura=scareFace.getObjectByName('STUN_AURA');if(aura)aura.visible=false;camera.add(scareFace);
 }
 function loadLevel(index){
+  audio.reset(index);
   resetSurvey(survey);mapKeyboard=false;
   clearScare();stunView?.hide();if(decoy){scene.remove(decoy.mesh);decoy.mesh.geometry.dispose();decoy.mesh.material.dispose();decoy=null;}
   if(world)world.dispose();Object.values(enemyModels).forEach(m=>{m.stunAura.visible=false;scene.remove(m.group);});

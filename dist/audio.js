@@ -1,8 +1,10 @@
 // Generated room tone and restrained horror cues. Creation alone is silent.
 export function createAudio() {
-  let ctx=null, master=null, ambient=null, buzzGain=null, hissGain=null, noiseBuffer=null, scareBuffer=null;
+  let ctx=null, master=null, ambient=null, buzzGain=null, hissGain=null, horrorGain=null, noiseBuffer=null, scareBuffer=null;
+  const drones=[];
   const spatialBuses=new Map(),bearings=new Map();let entitySound=false,routingType='sahur';
   function setSpatial(value,type='sahur'){
+    if(disposed)return;
     bearings.set(type,value);if(!ctx||!master)return;
     let bus=spatialBuses.get(type);
     if(!bus){const gain=ctx.createGain(),filter=ctx.createBiquadFilter(),pan=ctx.createStereoPanner?.();filter.type='lowpass';gain.connect(filter);if(pan){filter.connect(pan);pan.connect(master);}else filter.connect(master);bus={gain,filter,pan};spatialBuses.set(type,bus);}
@@ -11,6 +13,7 @@ export function createAudio() {
 
   let volume=.38, paused=false, disposed=false, initialized=false;
   let nextKnock=5, nextBeat=0, lastStep=-100, lastCrank=-100, time=0;
+  let nextAmbient=4, nextBreath=0, soundLevel=0, wasChasing=false;
   let captionHandler=()=>{};
   const live=new Set();
   const loops=[];
@@ -51,10 +54,10 @@ export function createAudio() {
     oscillator.connect(envelope);track(oscillator,envelope);
     oscillator.start(at); oscillator.stop(at+duration+.02);
   }
-  function filteredNoise(at,duration,level,frequency,q=.7,pan=0) {
+  function filteredNoise(at,duration,level,frequency,q=.7,pan=0,attack=.003) {
     const source=ctx.createBufferSource(); source.buffer=noiseBuffer;
     const filter=ctx.createBiquadFilter();filter.type='bandpass';filter.frequency.value=frequency;filter.Q.value=q;
-    const envelope=gainEnvelope(at,duration,level,.003);
+    const envelope=gainEnvelope(at,duration,level,attack);
     source.connect(filter);
     let panner=null;
     if(ctx.createStereoPanner) {
@@ -64,17 +67,21 @@ export function createAudio() {
     track(source,...[filter,envelope,panner].filter(Boolean));
     source.start(at,Math.random()*.6,duration);source.stop(at+duration+.02);
   }
-  function available(){return initialized&&!paused&&!disposed&&ctx?.state==='running';}
+  function available(){return initialized&&!paused&&!disposed&&volume>0&&ctx?.state==='running';}
 
   async function loadScareBuffer() {
+    const context=ctx;
     const protocol=window.location?.protocol||new URL(import.meta.url).protocol;
     if(!['http:','https:'].includes(protocol))return;
     try {
       const response=await fetch(new URL('./audio-assets/creepy-footsteps-scream-growl.wav',import.meta.url));
       if(!response.ok)throw new Error(`HTTP ${response.status}`);
-      scareBuffer=await ctx.decodeAudioData(await response.arrayBuffer());
+      const data=await response.arrayBuffer();
+      if(disposed)return;
+      const decoded=await context.decodeAudioData(data);
+      if(!disposed)scareBuffer=decoded;
     } catch(error) {
-      console.warn('Bundled scare audio could not be loaded; generated scare sounds remain available.',error);
+      if(!disposed)console.warn('Bundled scare audio could not be loaded; generated scare sounds remain available.',error);
     }
   }
 
@@ -106,11 +113,22 @@ export function createAudio() {
       const lfo=ctx.createOscillator();lfo.frequency.value=.14;
       const lfoGain=ctx.createGain();lfoGain.gain.value=.006;
       lfo.connect(lfoGain);lfoGain.connect(buzzGain.gain);lfo.start();loops.push(lfo);
+      // Detuned low notes beat against one another under the fluorescent hum.
+      // A fixed, small oscillator pool avoids allocating nodes every frame.
+      horrorGain=ctx.createGain();horrorGain.gain.value=.018;horrorGain.connect(ambient);
+      for(const [ratio,amplitude] of [[1,.5],[1.015,.28],[2.01,.12]]) {
+        const oscillator=ctx.createOscillator(),gain=ctx.createGain();
+        oscillator.type='sine';oscillator.frequency.value=41.2*ratio;gain.gain.value=amplitude;
+        oscillator.connect(gain);gain.connect(horrorGain);oscillator.start();
+        drones.push({oscillator,ratio});loops.push(oscillator);
+      }
       initialized=true;
-      await loadScareBuffer();
+      // Optional recording downloads must never delay gesture-based audio unlock.
+      void loadScareBuffer();
     }
     if(!paused&&ctx.state==='suspended') {
       try{await ctx.resume();}catch{}
+      if(paused&&!disposed)try{await ctx.suspend();}catch{}
     }
   }
 
@@ -167,14 +185,60 @@ export function createAudio() {
     captionHandler('A heartbeat pounds in your ears.');
     for(const offset of [0,.155]) tone(65,at+offset,.15,.025+close*.038,'sine',38);
   }
+  function roomSound() {
+    const at=ctx.currentTime,pan=(Math.random()<.5?-1:1)*(.55+Math.random()*.3);
+    if(state.level===1) {
+      captionHandler('Water drips into a distant pool.');
+      for(let i=0;i<3;i++) {
+        const t=at+i*.29;
+        tone(1150-i*140,t,.18,.027/(i+1),'sine',520-i*40);
+        filteredNoise(t,.15,.023/(i+1),1800,.9,pan,.012);
+      }
+    } else if(state.level===2) {
+      captionHandler('A distant pipe groans, then rings with a metallic echo.');
+      tone(91,at,1.15,.037,'triangle',49);
+      tone(347,at+.16,.75,.016,'sine',270);
+      filteredNoise(at,1.1,.035,580,3,pan,.09);
+      filteredNoise(at+.45,.55,.016,1250,4,-pan*.55,.04);
+    } else if(state.level===3) {
+      captionHandler('Paper rustles somewhere between the archive shelves.');
+      for(let i=0;i<3;i++)filteredNoise(at+i*.24,.32,.024-i*.004,1900-i*330,1.4,pan-i*pan*.15,.06);
+      tone(196,at,.9,.012,'sine',143);
+    } else {
+      captionHandler('The ceiling creaks in a distant corridor.');
+      tone(137,at,1.2,.025,'triangle',78);
+      tone(143,at+.08,.95,.016,'sine',86);
+      filteredNoise(at,.95,.032,740,3.4,pan,.08);
+    }
+  }
+  function breathing() {
+    const at=ctx.currentTime,level=.025+(state.sprinting?.014:0);
+    filteredNoise(at,.42,level,820,.8,-.12,.12);
+    filteredNoise(at+.48,.64,level*.8,470,.7,.12,.16);
+  }
   function update({distance=100,moving=false,sprinting=false,chasing=false,enemyType='sahur',level=0,dt=0}={}) {
     state.distance=Number.isFinite(distance)?Math.max(0,distance):100;
     state.enemyType=enemyType;state.level=level;state.moving=!!moving;state.sprinting=!!sprinting;state.chasing=!!chasing;
     if(!available()) return;
     time+=Math.min(.15,Math.max(0,Number(dt)||0));
+    if(soundLevel!==level) {
+      soundLevel=level;nextAmbient=time+4;nextBreath=0;wasChasing=false;
+    }
     const close=Math.max(0,1-state.distance/18);
     buzzGain.gain.setTargetAtTime(.025+Math.sin(time*.49)*.003+close*.008,ctx.currentTime,.4);
     hissGain.gain.setTargetAtTime(.028+(state.level===1?.015:0)+close*.017+(chasing?.008:0),ctx.currentTime,.5);
+    const root=[41.2,46.25,36.7,43.65][state.level]||41.2;
+    for(const {oscillator,ratio} of drones)oscillator.frequency.setTargetAtTime(root*ratio*(chasing?1.045:1),ctx.currentTime,1.2);
+    horrorGain.gain.setTargetAtTime(.018+close*.024+(chasing?.025:0),ctx.currentTime,chasing?.35:1.5);
+    if(chasing) {
+      if(!wasChasing)captionHandler('Your breath quickens as something gives chase.');
+      if(time>=nextBreath){breathing();nextBreath=time+(sprinting?1.15:1.35);}
+      // Leave a quiet gap after a chase so ambience cannot mask warning cues.
+      nextAmbient=time+6;
+    } else if(time>=nextAmbient) {
+      roomSound();nextAmbient=time+9+Math.random()*8;
+    }
+    wasChasing=!!chasing;
     if(time>=nextKnock) {
       entityCue(state.enemyType);nextKnock=time+(chasing?1.75:4.8)+Math.random()*(chasing?.75:3.5);
     }
@@ -256,6 +320,14 @@ export function createAudio() {
   function setCaptionHandler(handler) {
     captionHandler=typeof handler==='function'?handler:()=>{};
   }
+  function reset(level=0) {
+    if(disposed)return;
+    for(const source of live)try{source.stop();}catch{}
+    time=0;nextAmbient=4;nextKnock=5;nextBeat=0;nextBreath=0;
+    lastStep=-100;lastCrank=-100;soundLevel=level;wasChasing=false;
+    Object.assign(state,{distance:100,chasing:false,moving:false,sprinting:false,level});
+    if(horrorGain)horrorGain.gain.setTargetAtTime(.018,ctx.currentTime,.2);
+  }
   function pause() {
     paused=true;
     if(ctx&&master) {
@@ -270,6 +342,8 @@ export function createAudio() {
     paused=false;
     if(!ctx||disposed)return;
     try{await ctx.resume();}catch{}
+    if(disposed)return;
+    if(paused){try{await ctx.suspend();}catch{}return;}
     master.gain.cancelScheduledValues(ctx.currentTime);
     master.gain.setTargetAtTime(volume,ctx.currentTime,.1);
   }
@@ -277,7 +351,8 @@ export function createAudio() {
     disposed=true;initialized=false;
     for(const node of [...loops,...live]) {try{node.stop();node.disconnect();}catch{}}
     live.clear();loops.length=0;for(const {gain,filter,pan} of spatialBuses.values()){gain.disconnect();filter.disconnect();pan?.disconnect();}spatialBuses.clear();
+    drones.length=0;scareBuffer=null;
     if(ctx&&ctx.state!=='closed')ctx.close().catch(()=>{});
   }
-  return {setSpatial,init,update,step,collect,sting,scarePrelude,jumpscare,stunPulse,torchClick,crank,win,knock,entityCue,chargeWarning,setVolume,setCaptionHandler,pause,resume,dispose};
+  return {setSpatial,init,update,step,collect,sting,scarePrelude,jumpscare,stunPulse,torchClick,crank,win,knock,entityCue,chargeWarning,setVolume,setCaptionHandler,reset,pause,resume,dispose};
 }

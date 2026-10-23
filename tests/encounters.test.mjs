@@ -209,6 +209,8 @@ test('Brri charge warning has a distinct rising two-beat cue and respects sound 
     audio.chargeWarning();
     assert.equal(nodes.length, 0, 'A warning cannot initialize audio or autoplay.');
     await audio.init();
+    // The optional recording loads in the background after audio is unlocked.
+    await new Promise(resolve=>setImmediate(resolve));
     assert.match(requestedAsset, /audio-assets\/creepy-footsteps-scream-growl\.wav$/);
     const start = nodes.length;
     audio.chargeWarning();
