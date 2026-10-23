@@ -1,6 +1,6 @@
 // Generated room tone and restrained horror cues. Creation alone is silent.
 export function createAudio() {
-  let ctx=null, master=null, ambient=null, buzzGain=null, hissGain=null, noiseBuffer=null;
+  let ctx=null, master=null, ambient=null, buzzGain=null, hissGain=null, noiseBuffer=null, scareBuffer=null;
   const spatialBuses=new Map(),bearings=new Map();let entitySound=false,routingType='sahur';
   function setSpatial(value,type='sahur'){
     bearings.set(type,value);if(!ctx||!master)return;
@@ -66,6 +66,18 @@ export function createAudio() {
   }
   function available(){return initialized&&!paused&&!disposed&&ctx?.state==='running';}
 
+  async function loadScareBuffer() {
+    const protocol=window.location?.protocol||new URL(import.meta.url).protocol;
+    if(!['http:','https:'].includes(protocol))return;
+    try {
+      const response=await fetch(new URL('./audio-assets/creepy-footsteps-scream-growl.wav',import.meta.url));
+      if(!response.ok)throw new Error(`HTTP ${response.status}`);
+      scareBuffer=await ctx.decodeAudioData(await response.arrayBuffer());
+    } catch(error) {
+      console.warn('Bundled scare audio could not be loaded; generated scare sounds remain available.',error);
+    }
+  }
+
   async function init() {
     if(disposed) return;
     if(!ctx) {
@@ -95,6 +107,7 @@ export function createAudio() {
       const lfoGain=ctx.createGain();lfoGain.gain.value=.006;
       lfo.connect(lfoGain);lfoGain.connect(buzzGain.gain);lfo.start();loops.push(lfo);
       initialized=true;
+      await loadScareBuffer();
     }
     if(!paused&&ctx.state==='suspended') {
       try{await ctx.resume();}catch{}
@@ -207,6 +220,11 @@ export function createAudio() {
   }
   function jumpscare(fatal=false,type='sahur',variant='ambush',side=1) {
     if(!available())return;const at=ctx.currentTime,level=variant==='glimpse'?.4:1;
+    if(fatal&&scareBuffer){
+      const source=ctx.createBufferSource(),envelope=gainEnvelope(at,1.45,.17,.025);
+      source.buffer=scareBuffer;source.connect(envelope);track(source,envelope);
+      source.start(at,5.35,1.45);source.stop(at+1.47);
+    }
     if(variant==='door-slam'){tone(62,at,.55,.12,'sine',28);tone(145,at,.3,.055,'triangle',75);filteredNoise(at,.18,.15,1700,.8,side*.5);return;}
     if(variant==='steam-burst'){filteredNoise(at,.65,.17,2300,.55,side*.7);filteredNoise(at+.12,.44,.09,780,.7,-side*.2);tone(100,at,.2,.04,'sine',50);return;}
     if(variant==='footsteps'){tone(69,at,.15,.035,'sine',32);filteredNoise(at,.1,.04,320,.9,side*.95);return;}

@@ -18,7 +18,7 @@ WASD / arrows: move. Mouse: look. Shift: sprint. C: crouch. E: recover fuses / e
 
 Detailed procedural wallpaper, carpet and ceiling textures; branching rooms, light flicker and props; stage-specific objectives and enemy senses; flashlight with shadows and finite charge; adjustable screen exposure, flashlight output and beam width; stamina and crouching; an explored map; procedural ambience and positional threat cues; difficulty and optional challenge settings; accessibility and configurable mobile controls; restart, victory and loss screens.
 
-All environment textures, enemy geometry and sounds are generated locally. Three.js is distributed under its MIT license in `dist/vendor/LICENSE.three.txt`. Barlow Condensed, DM Sans and IBM Plex Mono are bundled with their SIL Open Font Licenses in `dist/fonts/`.
+Environment textures, enemy geometry and most sounds are generated locally. Fatal scare impacts also layer a short excerpt from the CC BY-SA 4.0 sound recording listed in `dist/audio-assets/ATTRIBUTION.txt`; the asset is bundled for offline play. Three.js is distributed under its MIT license in `dist/vendor/LICENSE.three.txt`. Barlow Condensed, DM Sans and IBM Plex Mono are bundled with their SIL Open Font Licenses in `dist/fonts/`.
 
 ## Detail and horror update (v1.1)
 

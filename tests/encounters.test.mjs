@@ -159,7 +159,10 @@ test('incomplete saved Brri attacks recover safely and require another full warn
 
 test('Brri charge warning has a distinct rising two-beat cue and respects sound controls', async () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const previousFetch = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
   const nodes = [], captions = [];
+  const decodedScare = { duration: 17 };
+  let requestedAsset = '';
   class Parameter {
     value = 0;
     changes = [];
@@ -175,8 +178,8 @@ test('Brri charge warning has a distinct rising two-beat cue and respects sound 
     }
     connect() {}
     disconnect() {}
-    start(at) { this.startedAt = at; }
-    stop() {}
+    start(at, offset, duration) { this.startedAt = at; this.offset = offset; this.duration = duration; }
+    stop(at) { this.stoppedAt = at; }
   }
   class AudioContext {
     currentTime = 10;
@@ -190,17 +193,23 @@ test('Brri charge warning has a distinct rising two-beat cue and respects sound 
     createBiquadFilter() { return new Node('filter'); }
     createStereoPanner() { return new Node('pan'); }
     createDynamicsCompressor() { return Object.assign(new Node('compressor'), { threshold: {}, knee: {}, ratio: {}, attack: {}, release: {} }); }
+    async decodeAudioData() { return decodedScare; }
     async resume() { this.state = 'running'; }
     async suspend() { this.state = 'suspended'; }
     async close() { this.state = 'closed'; }
   }
-  Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: { AudioContext } });
+  Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: { AudioContext, location: { protocol: 'https:' } } });
+  Object.defineProperty(globalThis, 'fetch', { configurable: true, writable: true, value: async url => {
+    requestedAsset = String(url);
+    return { ok: true, async arrayBuffer() { return new ArrayBuffer(8); } };
+  } });
   const audio = createAudio();
   try {
     audio.setCaptionHandler(text => captions.push(text));
     audio.chargeWarning();
     assert.equal(nodes.length, 0, 'A warning cannot initialize audio or autoplay.');
     await audio.init();
+    assert.match(requestedAsset, /audio-assets\/creepy-footsteps-scream-growl\.wav$/);
     const start = nodes.length;
     audio.chargeWarning();
     const warning = nodes.slice(start), tones = warning.filter(node => node.kind === 'tone');
@@ -209,6 +218,11 @@ test('Brri charge warning has a distinct rising two-beat cue and respects sound 
     assert.ok(beats[1] - beats[0] >= .3);
     assert.ok(tones.every(node => node.frequency.changes.at(-1).value > node.frequency.changes[0].value), 'The warning rises instead of repeating the ordinary descending growl.');
     assert.match(captions[0], /Brri.*charge.*Sidestep/);
+    audio.jumpscare(true, 'sahur');
+    const sampledImpact = nodes.find(node => node.kind === 'noise' && node.buffer === decodedScare);
+    assert.ok(sampledImpact, 'Fatal impacts include the bundled recording.');
+    assert.deepEqual([sampledImpact.startedAt, sampledImpact.offset, sampledImpact.duration], [10, 5.35, 1.45]);
+    assert.equal(sampledImpact.stoppedAt, 11.47);
     const scheduled = nodes.length;
     audio.setVolume(0); audio.chargeWarning();
     assert.equal(nodes.length, scheduled);
@@ -225,5 +239,7 @@ test('Brri charge warning has a distinct rising two-beat cue and respects sound 
     audio.dispose();
     if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
     else delete globalThis.window;
+    if (previousFetch) Object.defineProperty(globalThis, 'fetch', previousFetch);
+    else delete globalThis.fetch;
   }
 });
