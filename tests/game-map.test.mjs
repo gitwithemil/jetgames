@@ -285,6 +285,17 @@ test('the generated stages and survey interface work together', async t => {
     assert.equal(qa.survey.waypoint, null);
     assert.equal(element('map-clear-waypoint').disabled, true);
     await clickCell(cell);
+    await click('map-resume');
+    frames(1);
+    assert.equal(element('waypoint-cue').hidden, false, 'A charted waypoint remains visible during gameplay.');
+    assert.match(element('waypoint-distance').textContent, /WAYPOINT/);
+    assert.match(element('waypoint-cue').getAttribute('aria-label'), /Waypoint/);
+    await click('map-open-button');
+    await click('map-clear-waypoint');
+    await click('map-resume');
+    frames(1);
+    assert.equal(element('waypoint-cue').hidden, true, 'Clearing a waypoint removes its in-game guidance.');
+    await click('map-open-button');
     await element('map-canvas').dispatch('keydown', { code: 'Delete', key: 'Delete' });
     assert.equal(qa.survey.waypoint, null);
     await clickCell(cell);

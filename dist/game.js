@@ -1,4 +1,4 @@
-import { createSurveyState, resetSurvey, revealSurvey, renderSurveyMap, surveyLayout, surveyCellAt, selectSurveyWaypoint, surveyKey } from './survey-map.js';
+import { createSurveyState, resetSurvey, revealSurvey, renderSurveyMap, surveyLayout, surveyCellAt, selectSurveyWaypoint, surveyGuidance, surveyKey } from './survey-map.js';
 import { BEAM_MODES, BEAMS, stepTorch, beamStrength, createBeamCookie } from './lighting.js';
 import { STUN, createStunView, selectStunTarget, createStunAura } from './weapon.js';
 import { scareTimeline, scarePose, SCARE_VARIANTS, createScareDirector, createScareEffects } from './scares.js';
@@ -754,6 +754,9 @@ function updatePlayer(dt){
 }
 function updateHUD(dt){
   $('run-time').textContent=formatTime(elapsed);$('stamina-fill').style.width=`${stamina}%`;$('stamina-fill').style.background=stamina<25?'#e8a675':'var(--accent)';$('stamina-label').textContent=stamina<=.1?'EXHAUSTED':stamina<25?'LOW STAMINA':'STAMINA';$('stamina-meter').setAttribute('aria-valuenow',String(Math.round(stamina)));$('battery-fill').style.width=`${battery}%`;$('battery-value').textContent=`${Math.ceil(battery)}%`;$('battery-meter-row').setAttribute('aria-valuenow',String(Math.round(battery)));
+  const route=surveyGuidance(world,survey.explored,player,yaw,survey.waypoint),waypointCue=$('waypoint-cue');
+  waypointCue.hidden=!route;
+  if(route){$('waypoint-arrow').style.transform=`rotate(${route.angle}rad)`;$('waypoint-distance').textContent=route.arrived?'WAYPOINT NEARBY':`WAYPOINT · ${Math.round(route.distance)} M`;waypointCue.setAttribute('aria-label',route.arrived?'Waypoint nearby':`Waypoint ${Math.round(route.distance)} metres away`);}
   const chasing=!training.active&&elapsed>=enemyGraceUntil&&alertUntil>elapsed,close=distanceToEnemy<13;
   document.querySelector('.entity-meter').classList.toggle('threat',chasing&&close);
   const threat=actors.filter(a=>a.chasing).sort((a,b)=>a.model.group.position.distanceTo(player)-b.model.group.position.distanceTo(player))[0]||nearestActor;

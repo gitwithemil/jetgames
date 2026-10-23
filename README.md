@@ -154,3 +154,8 @@ Landmarks select bare wall sections clear of existing furniture and preserve flo
 ## Patrol movement fix
 
 Regular Play starts enemy patrols after the normal spawn grace period; safe training is now explicitly selected through Guided Start. The guide closes before practice begins. Patrols finish the current waypoint before a timed route refresh, reach its centre precisely, and recover toward the current cell centre when blocked rather than retrying the same cut corner indefinitely. Existing stuns, Watcher beam freezing, pause behavior and guided practice remain intentional stops. Regression tests exercise natural-spawn patrols across all four stages and a real map corner with a route refresh due mid-step.
+
+
+## Waypoint guidance
+
+Place a waypoint on a charted corridor in the survey map to keep a direction arrow and route distance in the HUD after closing the map. Guidance uses the known, walkable route rather than pointing through walls; it disappears when the waypoint is cleared and marks nearby arrival.

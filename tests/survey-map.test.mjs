@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createSurveyState,resetSurvey,revealSurvey,visibleSurveyRay,knownSurveyPath,selectSurveyWaypoint,surveyLayout,surveyPoint,surveyCellAt,surveyMarkers,surveyStats,renderSurveyMap,surveyRoutePoints} from '../dist/survey-map.js';
+import {createSurveyState,resetSurvey,revealSurvey,visibleSurveyRay,knownSurveyPath,selectSurveyWaypoint,surveyGuidance,surveyLayout,surveyPoint,surveyCellAt,surveyMarkers,surveyStats,renderSurveyMap,surveyRoutePoints} from '../dist/survey-map.js';
 
 const fixture=(width=7,height=6,cellSize=5)=>({width,height,cellSize,grid:Array.from({length:height},(_,z)=>Array.from({length:width},(_,x)=>x===0||z===0||x===width-1||z===height-1?1:0)),rooms:[]});
 const at=(world,x,z)=>({x:(x+.5)*world.cellSize,z:(z+.5)*world.cellSize});
@@ -37,6 +37,17 @@ test('route edges account for furniture collision rather than drawing through it
   const world=fixture(),state=createSurveyState();chart(world,state);
   world.isWalkable=(x,z)=>!(Math.abs(x-10)<.1&&Math.abs(z-12.5)<.1);
   const path=knownSurveyPath(world,state.explored,{x:1,z:2},{x:2,z:2});assert.equal(path.length,4);
+});
+test('waypoint guidance follows a charted route relative to the camera and reports arrival',()=>{
+  const world=fixture(),state=createSurveyState();state.explored=new Set(['1,1','2,1','3,1']);
+  const waypoint={x:3,z:1},player=at(world,1,1);
+  const north=surveyGuidance(world,state.explored,player,0,waypoint);
+  assert.equal(north.distance,10);assert(Math.abs(north.angle-Math.PI/2)<1e-9);assert.equal(north.arrived,false);
+  const facingRoute=surveyGuidance(world,state.explored,player,Math.PI/2,waypoint);
+  assert(Math.abs(facingRoute.angle)<1e-9);
+  assert.equal(surveyGuidance(world,state.explored,at(world,3,1),0,waypoint).arrived,true);
+  state.explored.delete('2,1');
+  assert.equal(surveyGuidance(world,state.explored,player,0,waypoint),null);
 });
 test('waypoints reject unknown, wall and unreachable cells and toggle when reselected',()=>{
   const world=fixture(),state=createSurveyState(),position=at(world,1,1);state.explored.add('1,1');

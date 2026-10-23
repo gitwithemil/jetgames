@@ -121,6 +121,20 @@ export function surveyRoutePoints(world,explored,player,path){
   }
   return {points:centres,connected:false};
 }
+export function surveyGuidance(world,explored,player,yaw,waypoint){
+  if(!waypoint)return null;
+  const start={x:Math.floor(player.x/world.cellSize),z:Math.floor(player.z/world.cellSize)};
+  const path=knownSurveyPath(world,explored,start,waypoint);
+  if(!path.length)return null;
+  const route=surveyRoutePoints(world,explored,player,path);
+  if(!route.connected)return null;
+  let distance=0;
+  for(let i=1;i<route.points.length;i++)distance+=Math.hypot(route.points[i].x-route.points[i-1].x,route.points[i].z-route.points[i-1].z);
+  const next=route.points.find((point,index)=>index>0&&Math.hypot(point.x-player.x,point.z-player.z)>.35)
+    ||{x:(waypoint.x+.5)*world.cellSize,z:(waypoint.z+.5)*world.cellSize};
+  const bearing=Math.atan2(next.x-player.x,player.z-next.z);
+  return {angle:Math.atan2(Math.sin(bearing-yaw),Math.cos(bearing-yaw)),distance,arrived:distance<1.4};
+}
 
 export function surveyLayout(world,width,height) {
   const pad=Math.max(30,Math.min(width,height)*.055),size=Math.min((width-pad*2)/world.width,(height-pad*2)/world.height);

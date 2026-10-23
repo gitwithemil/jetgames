@@ -64,3 +64,6 @@
 @keyframes proximity-breathe{0%,100%{opacity:.5}50%{opacity:.95}}
 @media(prefers-reduced-motion:reduce){.proximity-haze{animation:none}}
 @media(pointer:coarse){#proximity-label{bottom:40%;font-size:8px;letter-spacing:2px}}
+#waypoint-cue{display:flex;align-items:center;gap:6px;padding:5px 8px;color:#f1c77a;background:#121a16d9;border:1px solid #f1c77a66;border-radius:3px;font:8px var(--mono);letter-spacing:.6px;white-space:nowrap}
+#waypoint-cue svg{width:15px;height:15px;flex:none;transition:transform .12s linear}
+@media(max-width:520px){#waypoint-cue{position:absolute;right:0;top:43px;font-size:7px;padding:4px 6px}}
